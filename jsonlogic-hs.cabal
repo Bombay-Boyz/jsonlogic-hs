@@ -1,0 +1,56 @@
+cabal-version:      3.0
+name:                jsonlogic-hs
+version:             0.1.0.0
+synopsis:            A native, spec-conformant JsonLogic implementation for Haskell
+description:         See VISION.md and ENGINEERING_STANDARD.md for the design
+                     and engineering rationale this project is built against.
+license:             BSD-3-Clause
+-- TODO: add a LICENSE file matching the license above before publishing.
+author:              Sabrinathan Nair
+maintainer:          TODO@example.com
+copyright:           2026 Sabrinathan Nair
+category:            Language
+build-type:          Simple
+extra-source-files:  README.md
+                    , VISION.md
+                    , ENGINEERING_STANDARD.md
+
+-- Standard 5.1: mandatory warning flags, shared so the library and the
+-- test suite are held to the identical bar, not two different ones.
+common warnings
+    ghc-options: -Wall
+                 -Wcompat
+                 -Widentities
+                 -Wincomplete-record-updates
+                 -Wincomplete-uni-patterns
+                 -Wmissing-export-lists
+                 -Wpartial-fields
+                 -Wredundant-constraints
+                 -Werror
+
+library
+    import:           warnings
+    hs-source-dirs:   src
+    exposed-modules:  JsonLogic.Core.Rule
+                      JsonLogic.Core.Errors
+    -- Deliberately minimal — other-modules grow through Phases 1-6 as
+    -- they're actually needed (Standard 2.11: no speculative modules
+    -- ahead of need).
+    build-depends:    base              >=4.14 && <5
+                    , aeson
+                    , recursion-schemes
+                    , deriving-compat
+                    , text
+                    , data-fix
+    default-language: Haskell2010
+
+test-suite jsonlogic-hs-test
+    import:           warnings
+    type:             exitcode-stdio-1.0
+    hs-source-dirs:   test
+    main-is:          Spec.hs
+    build-depends:    base
+                    , jsonlogic-hs
+                    , hspec
+                    , QuickCheck
+    default-language: Haskell2010

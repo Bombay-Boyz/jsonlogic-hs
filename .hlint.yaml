@@ -1,0 +1,3 @@
+# Minimal starting configuration. Add ignores here only in response to
+# a specific, justified hlint finding — not preemptively.
+- arguments: []
