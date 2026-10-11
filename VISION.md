@@ -405,3 +405,32 @@ be revisited deliberately rather than rediscovered.
   because the reference uses each in different operators. Whitespace
   trimming uses Haskell's `isSpace`, which differs from JavaScript's set
   only for the byte-order mark.
+
+- **Evaluator carrier is `Val -> Either EvalError Val`, concrete.** The
+  public `evaluate`/`apply` are concrete (Standard 3.14). The `mtl`-style
+  polymorphic internals floated in §4 are deferred (Standard 0.7): there
+  is one interpreter and one monad, so the abstraction would have nothing
+  to abstract over yet.
+- **Operand evaluation follows the reference exactly.** Everything is
+  evaluated before its operator except `if`, `and`, `or` (lazy) and the
+  scoped collection operators. So `var`'s default is evaluated even when
+  unused, and `{"+": [1, {"unknown": []}]}` fails while
+  `{"or": [true, {"unknown": []}]}` does not.
+- **`log` returns its argument and does nothing else.** The reference
+  writes to the console; the pure core performs no I/O.
+- **Custom operators** receive the current data and their evaluated
+  arguments as aeson `Value`s and return `Either Text Value`. Names are
+  matched exactly; the reference's dotted-name lookup (`"Math.max"`
+  descending into a nested operations object) is not reproduced.
+- **`reduce` requires its third (initial) argument.** The reference
+  accepts two and starts from `null`; under the strict-arity decision a
+  two-argument `reduce` is a parse error.
+- **`missing` and `missing_some`** treat their keys as plain data. The
+  reference re-evaluates each already-evaluated key as a rule, which only
+  matters for a key that happens to look like a one-key object. A
+  non-array key list to `missing_some` is treated as empty.
+- **`*` with one operand returns it unconverted** (`{"*": ["3"]}` is the
+  string `"3"`), because the reference folds without a seed. Noted
+  because it looks like a bug and is not ours.
+- **`NaN` and the infinities become `null` on output** (`{"/": [1, 0]}`
+  is `null`), matching `JSON.stringify`.

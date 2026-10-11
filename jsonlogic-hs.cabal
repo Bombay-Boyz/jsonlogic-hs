@@ -35,6 +35,8 @@ library
                       JsonLogic.Core.Errors
                       JsonLogic.Core.Parse
                       JsonLogic.Core.Value
+                      JsonLogic.Core.Eval
+                      JsonLogic
     -- Deliberately minimal — other-modules grow through Phases 1-6 as
     -- they're actually needed (Standard 2.11: no speculative modules
     -- ahead of need).
@@ -54,10 +56,12 @@ test-suite jsonlogic-hs-test
     main-is:          Spec.hs
     other-modules:    ParseSpec
                       ValueSpec
+                      EvalSpec
     build-depends:    base
                     , jsonlogic-hs
                     , hspec
                     , QuickCheck
+                    , bytestring
                     , aeson
                     , data-fix
                     , text
