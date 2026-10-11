@@ -379,3 +379,29 @@ be revisited deliberately rather than rediscovered.
 - **`anaM` is defined locally in `Parse.hs`**, because its availability in
   the installed `recursion-schemes` could not be confirmed from here. If
   the library exports it, replace the local definition (Standard 4.7).
+
+- **Evaluation domain is `Val`, not aeson's `Value`** (`JsonLogic.Core.Value`).
+  The reference is JavaScript, so numbers are doubles and `NaN`/`Infinity`
+  are real intermediate values (`1/0 > 5` is true). `Val` is JSON plus
+  those; they become `null` only when a result is written back, as
+  `JSON.stringify` does. Custom operators still see and return aeson
+  `Value`s.
+- **`If`, `Max`, `Min` are plain lists; `Sub` is `a (Maybe a)`.** The
+  reference defines their empty forms (`null`, `-Infinity`, `Infinity`),
+  so they are representable; `Sub` only ever reads two arguments. This
+  corrects the earlier `Sub (NonEmpty a)` documentation, which claimed
+  left-to-right subtraction the reference does not perform. `Mul` is now
+  the only constructor still using `NonEmpty`.
+- **Arrays and objects are never equal under `==` / `===`.** The reference
+  compares them by reference identity, which parsed JSON does not have.
+  (Differs only where one array is reached twice through the same
+  variable.)
+- **Strings order and index by code point**, not UTF-16 code unit.
+  Differs from the reference only for characters outside the Basic
+  Multilingual Plane.
+- **Number conversion is explicit.** `Number()` semantics (`toNumber`:
+  trimmed whole string, hex/octal/binary literals) and `parseFloat`
+  semantics (`parseFloat`: longest decimal prefix) are separate functions
+  because the reference uses each in different operators. Whitespace
+  trimming uses Haskell's `isSpace`, which differs from JavaScript's set
+  only for the byte-order mark.

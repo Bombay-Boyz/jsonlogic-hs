@@ -2,13 +2,16 @@
 -- Module      : JsonLogic.Core.Errors
 --
 -- The closed error vocabulary of the pipeline, layered by stage
--- (VISION.md §7). Only the parsing layer exists so far; validation and
--- evaluation errors are added when those stages are written, not before
--- (Standard 2.11).
+-- (VISION.md §7): reading a rule can fail, evaluating one can fail, and
+-- 'Error' is the sum of the two for callers that do both.
 module JsonLogic.Core.Errors
   ( Arity (..)
+  , Error (..)
+  , EvalError (..)
   , ParseError (..)
   ) where
+
+import Data.Text (Text)
 
 import JsonLogic.Core.Rule (OperatorName)
 
@@ -27,4 +30,20 @@ data ParseError
   | -- | An operator was given a number of arguments its shape does not
     -- admit: operator, what it accepts, how many it was given.
     ArityMismatch OperatorName Arity Int
+  deriving (Eq, Show)
+
+-- | Why a well-formed rule could not be evaluated. JavaScript semantics
+-- make most odd inputs produce @NaN@ or @null@ rather than fail, so only
+-- operators the evaluator was not given can go wrong.
+data EvalError
+  = -- | A rule used an operator that is neither builtin nor supplied.
+    UnknownOperator OperatorName
+  | -- | A supplied operator reported failure, with its reason.
+    CustomOperatorFailed OperatorName Text
+  deriving (Eq, Show)
+
+-- | Either stage's failure, for callers that parse and evaluate in one go.
+data Error
+  = ParseFailure ParseError
+  | EvalFailure EvalError
   deriving (Eq, Show)

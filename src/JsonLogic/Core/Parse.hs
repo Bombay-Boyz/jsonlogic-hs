@@ -87,8 +87,8 @@ operator name args = case name of
   "var" -> oneOrTwo op Var args
   "missing" -> anyNumber Missing args
   "missing_some" -> exactlyTwo op MissingSome args
-  "if" -> atLeastOne op If args
-  "?:" -> atLeastOne op If args
+  "if" -> anyNumber If args
+  "?:" -> anyNumber If args
   "and" -> anyNumber And args
   "or" -> anyNumber Or args
   "!" -> exactlyOne op Not args
@@ -101,10 +101,10 @@ operator name args = case name of
   "<=" -> twoOrThree op Lte args
   ">" -> exactlyTwo op Gt args
   ">=" -> exactlyTwo op Gte args
-  "max" -> atLeastOne op Max args
-  "min" -> atLeastOne op Min args
+  "max" -> anyNumber Max args
+  "min" -> anyNumber Min args
   "+" -> anyNumber Add args
-  "-" -> atLeastOne op Sub args
+  "-" -> oneOrTwo op Sub args
   "*" -> atLeastOne op Mul args
   "/" -> exactlyTwo op Div args
   "%" -> exactlyTwo op Mod args

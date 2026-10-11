@@ -89,8 +89,10 @@ data RuleF a
     MissingSome a a
   | -- | @{"if": [c1, t1, c2, t2, ..., else]}@. Modelled as a chain, not
     -- a fixed triple, because the spec's if/elseif/.../else form takes
-    -- an arbitrary odd-length argument list, not just three.
-    If (NonEmpty a)
+    -- an arbitrary odd-length argument list, not just three. The empty
+    -- form is defined by the reference (it yields @null@: no branch
+    -- matched and there is no else), so a plain list is the right shape.
+    If [a]
   | -- | Empty form ('And []') evaluates to JSON @null@ — the reference
     -- implementation returns JS @undefined@ for this case (an
     -- uninitialised tracking variable when the loop never runs), which
@@ -121,16 +123,20 @@ data RuleF a
   | Lte a a (Maybe a)
   | Gt a a
   | Gte a a
-  | Max (NonEmpty a)
-  | Min (NonEmpty a)
+  | -- | Empty form is defined in the reference (@-Infinity@, which JSON
+    -- renders as @null@), so a plain list.
+    Max [a]
+  | -- | Empty form is @Infinity@ in the reference (JSON @null@).
+    Min [a]
   | -- | Empty form evaluates to @0@ — the reference fold has an
     -- explicit zero seed. Confirmed against source: a plain list is the
     -- correct shape here, not 'NonEmpty'.
     Add [a]
-  | -- | @{"-": [x]}@ negates; @{"-": [x, y, ...]}@ subtracts
-    -- left-to-right. One constructor for both, per the spec's own
-    -- overload — the arity, not the constructor, decides which.
-    Sub (NonEmpty a)
+  | -- | @{"-": [x]}@ negates; @{"-": [x, y]}@ subtracts. The reference
+    -- reads only the first two arguments, so the shape allows no more.
+    -- One constructor for both, per the spec's own overload — the
+    -- arity, not the constructor, decides which.
+    Sub a (Maybe a)
   | -- | Empty form is a genuine runtime error in the reference
     -- implementation — the fold has no seed. 'NonEmpty' is therefore the
     -- confirmed-correct shape, not a guess: an empty 'Mul' is invalid
