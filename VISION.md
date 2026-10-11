@@ -353,3 +353,29 @@ the 3,000–5,000 budget with room for polish.
   sandbox (`x-deny-reason: host_not_allowed`) — resolve locally or adjust
   the sandbox's network allowlist before Phase 0 can actually be verified
   by compiling, not just drafted.
+
+## 11. Decision log (append-only)
+
+Decisions made while writing code, recorded with their reasons so they can
+be revisited deliberately rather than rediscovered.
+
+- **`Arr [a]` added to `RuleF`.** The reference implementation evaluates
+  arrays element-wise, so an array can contain rules; `Lit Value` alone
+  cannot represent that. Recalled from reading `logic.js`; to be confirmed
+  by the conformance suite in Phase 5.
+- **`>` and `>=` are strictly binary.** Only `<` and `<=` have the
+  three-argument "between" form. `RuleF` originally gave all four the
+  optional third operand; corrected in Phase 2. Same confirmation caveat.
+- **Wrong argument counts are a `ParseError`** (deliberate deviation,
+  Standard 5.9). The reference implementation silently ignores extra
+  arguments and pads missing ones; `RuleF` makes those shapes
+  unrepresentable instead. If the conformance suite exercises sloppy
+  arities, the affected operators are relaxed individually.
+- **`"?:"` is parsed as an alias of `"if"`**, as recalled from the
+  reference source. To be confirmed.
+- **Depth bound:** `parseRule` rejects nesting deeper than 64
+  (`defaultMaxDepth`); `parseRuleWithDepth` takes any limit. Nesting of
+  exactly the limit is accepted. Property-tested.
+- **`anaM` is defined locally in `Parse.hs`**, because its availability in
+  the installed `recursion-schemes` could not be confirmed from here. If
+  the library exports it, replace the local definition (Standard 4.7).
