@@ -68,6 +68,10 @@ newtype OperatorName = OperatorName Text
 data RuleF a
   = -- | A JSON literal that is not itself a rule — evaluates to itself.
     Lit Value
+  | -- | A JSON array. The reference implementation evaluates arrays
+    -- element-wise (each element may itself be a rule), so an array is
+    -- a node with sub-rule children, not an opaque literal.
+    Arr [a]
   | -- | @{"var": [path, default]}@. @path@ is itself a sub-rule (it may
     -- be computed, e.g. via 'Cat'), evaluated first to a 'Value' that is
     -- then coerced to a string or numeric index at evaluation time —
@@ -112,10 +116,11 @@ data RuleF a
     -- three-argument "is b between a and c" form). The 'Maybe' is what
     -- makes a fourth operand, or a zero/one-operand call, a parse-time
     -- impossibility rather than a case the evaluator has to reject.
+    -- Only @<@ and @<=@ have this form; @>@ and @>=@ are strictly binary.
     Lt a a (Maybe a)
   | Lte a a (Maybe a)
-  | Gt a a (Maybe a)
-  | Gte a a (Maybe a)
+  | Gt a a
+  | Gte a a
   | Max (NonEmpty a)
   | Min (NonEmpty a)
   | -- | Empty form evaluates to @0@ — the reference fold has an
