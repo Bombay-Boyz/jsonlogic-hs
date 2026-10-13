@@ -80,11 +80,18 @@ arguments :: Value -> [Value]
 arguments (Array items) = toList items
 arguments other = [other]
 
+-- | The classic suite requires @{"var": []}@ to mean the data itself, like
+-- @{"var": null}@ and @{"var": ""}@, so an empty argument list is read as
+-- a single null path rather than rejected for its arity.
+varOperands :: [Seed] -> [Seed]
+varOperands [] = [(0, Null)]
+varOperands args = args
+
 -- | The operator table. Names outside the closed builtin set become
 -- 'CustomOp', whose behaviour is supplied by the caller at evaluation.
 operator :: Text -> [Seed] -> Either ParseError (RuleF Seed)
 operator name args = case name of
-  "var" -> oneOrTwo op Var args
+  "var" -> oneOrTwo op Var (varOperands args)
   "missing" -> anyNumber Missing args
   "missing_some" -> exactlyTwo op MissingSome args
   "if" -> anyNumber If args

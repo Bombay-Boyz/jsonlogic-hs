@@ -434,3 +434,17 @@ be revisited deliberately rather than rediscovered.
   because it looks like a bug and is not ours.
 - **`NaN` and the infinities become `null` on output** (`{"/": [1, 0]}`
   is `null`), matching `JSON.stringify`.
+
+- **Conformance runner (`conformance/Conformance.hs`).** Runs the classic
+  suite at `test/tests.json` (downloaded from
+  `jsonlogic.com/tests.json`, the suite other implementations share; check
+  its licence before publishing) and prints a pass count and every
+  failure. It reports rather than gates: each failure is either a bug or a
+  deviation to record here, and which is a human decision. Once the
+  failures are all explained it should become a gate with an explicit
+  list of known deviations.
+
+- **Empty `var` arguments.** `{"var": []}` is read as a lookup of the
+  empty path, i.e. the data itself, because the classic suite requires it
+  (`[{"var":[]}, 1, 1]`). This is the one place the strict-arity rule
+  (§11, wrong argument counts are parse errors) yields to the reference.

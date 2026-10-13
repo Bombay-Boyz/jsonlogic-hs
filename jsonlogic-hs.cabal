@@ -66,3 +66,18 @@ test-suite jsonlogic-hs-test
                     , data-fix
                     , text
     default-language: Haskell2010
+
+-- Runs the classic JsonLogic suite (test/tests.json) and reports a pass
+-- count. Run it with:
+--   cabal test jsonlogic-hs-conformance --test-show-details=direct
+test-suite jsonlogic-hs-conformance
+    import:           warnings
+    type:             exitcode-stdio-1.0
+    hs-source-dirs:   conformance
+    main-is:          Conformance.hs
+    build-depends:    base
+                    , jsonlogic-hs
+                    , aeson
+                    , bytestring
+                    , directory
+    default-language: Haskell2010

@@ -67,3 +67,7 @@ spec =
     it "accepts nesting exactly up to the depth limit and no deeper" $
       property $ \(NonNegative n) (NonNegative limit) ->
         isRight (parseRuleWithDepth limit (nested n)) == (n <= limit)
+
+    it "reads {\"var\": []} as a lookup of the data itself" $
+      parseRule (object ["var" .= ([] :: [Int])])
+        `shouldBe` Right (Fix (Var (lit Null) Nothing))
