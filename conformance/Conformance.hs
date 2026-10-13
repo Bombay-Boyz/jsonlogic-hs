@@ -1,16 +1,18 @@
 -- |
 -- Conformance runner for the classic JsonLogic test suite
--- (@test/tests.json@, from jwadhams/json-logic-js).
+-- (@test/tests.json@, from jsonlogic.com/tests.json).
 --
 -- The suite is a JSON array. Each case is a three-element array
 -- @[rule, data, expected]@; bare strings are section comments. Every
 -- case is run through 'apply' and its result compared with @expected@.
 --
--- This runner reports; it does not yet fail the build. Each failure is
--- either a bug to fix or a deliberate deviation to record in VISION.md
--- §11, and deciding which is a human call, not a threshold.
+-- It exits non-zero if any case fails, so a regression fails the build.
+-- The classic suite passes in full today. Should a change make a case
+-- fail, it is either a bug to fix or a deliberate deviation to record
+-- in VISION.md §11 — a human call, not a threshold.
 module Main (main) where
 
+import Control.Monad (unless)
 import Data.Aeson (Value (..), eitherDecodeFileStrict, encode)
 import qualified Data.ByteString.Lazy.Char8 as Char8
 import Data.Foldable (for_, toList)
@@ -73,6 +75,7 @@ report entries = do
         ++ show (length entries - length cases)
         ++ " other entries skipped (comments)."
     )
+  unless (null failures) exitFailure
 
 render :: Value -> String
 render = Char8.unpack . encode

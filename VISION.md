@@ -448,3 +448,23 @@ be revisited deliberately rather than rediscovered.
   empty path, i.e. the data itself, because the classic suite requires it
   (`[{"var":[]}, 1, 1]`). This is the one place the strict-arity rule
   (§11, wrong argument counts are parse errors) yields to the reference.
+
+## 12. Status log
+
+- **2026-10-13: phases 0 to 5 complete.** Scaffold, `RuleF`, depth-bounded
+  parser, JavaScript value semantics, evaluator, and conformance. The
+  classic shared suite passes in full (278 of 278 cases, 24 comment
+  entries skipped); unit and property tests: 116 examples, 0 failures.
+  The conformance runner now fails the build on any regression.
+- **What the suite does not prove.** It never exercises most of the
+  deliberate deviations in §11 (strict argument counts, array equality,
+  code-point ordering), so passing it says the reference's own examples
+  are honoured, not that those deviations are harmless. A differential
+  test against the real JavaScript implementation would close that gap.
+- **Still to do before a first release:** a `LICENSE` file and real
+  `maintainer` metadata in the `.cabal` file (both currently
+  placeholders), `hlint` / `weeder` / formatter enforcement per the
+  Standard's setup checklist, a Haddock coverage pass, `cabal check`, and
+  a Hackage candidate upload.
+- **Tracked, not scheduled:** the newer `json-logic/.github` community
+  specification (§2, §10).
