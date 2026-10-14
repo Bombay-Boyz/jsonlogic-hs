@@ -3,3 +3,5 @@ dist-newstyle/
 *.hi
 *.o
 .HTF/
+differential/node_modules/
+differential/out/

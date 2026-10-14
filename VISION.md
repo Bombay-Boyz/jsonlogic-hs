@@ -468,3 +468,13 @@ be revisited deliberately rather than rediscovered.
   a Hackage candidate upload.
 - **Tracked, not scheduled:** the newer `json-logic/.github` community
   specification (§2, §10).
+- **Differential test (`differential/`).** `cabal run jsonlogic-hs-differential -- COUNT SEED`
+  generates random rules over every builtin operator, runs them through this
+  library and through the real `json-logic-js` (via Node), and lists every
+  disagreement. It needs Node and an `npm install` in `differential/`, so it is
+  an executable, not part of `cabal test`. Rules use argument counts this
+  library accepts, so a mismatch is a real behavioural difference, not the
+  documented strict-arity deviation. Probing the reference directly confirmed
+  three of the deviations are real: it ignores extra arguments (`{"-":[5,2,1]}`
+  is 3), treats the same array reached twice as equal, and accepts a
+  two-argument `reduce`.

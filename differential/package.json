@@ -1,0 +1,9 @@
+{
+  "name": "jsonlogic-hs-differential-oracle",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The reference implementation, wrapped for differential testing against jsonlogic-hs.",
+  "dependencies": {
+    "json-logic-js": "^2.0.0"
+  }
+}

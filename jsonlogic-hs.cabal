@@ -81,3 +81,20 @@ test-suite jsonlogic-hs-conformance
                     , bytestring
                     , directory
     default-language: Haskell2010
+
+-- Differential test against the real JavaScript implementation. Needs
+-- Node.js, so it is an executable, not part of `cabal test`. See
+-- differential/README.md.
+executable jsonlogic-hs-differential
+    import:           warnings
+    hs-source-dirs:   differential
+    main-is:          Differential.hs
+    build-depends:    base
+                    , jsonlogic-hs
+                    , aeson
+                    , bytestring
+                    , directory
+                    , process
+                    , QuickCheck
+                    , text
+    default-language: Haskell2010
