@@ -496,3 +496,21 @@ be revisited deliberately rather than rediscovered.
   when `y` is undefined, `<` and `<=` drop an undefined third operand, and
   `substr` ignores an undefined end. Handled by `definedOperand` in `Eval.hs`.
   Distinct from `null`: `{"substr": ["jsonlogic", 4, null]}` is `""`.
+- **Numbers are converted and printed exactly as JavaScript does.** The
+  third differential run (50000 cases, seed 3) found one mismatch in
+  `-2.2531e+21`. The double was right; the digits written for it were not.
+  GHC's `floatToDigits` accepts only digit strings strictly inside a
+  double's rounding interval, while ECMAScript also accepts the exact
+  halfway point when the significand is even. From 2^53 up those points are
+  whole numbers, so JavaScript can print `2.2531e+21` where GHC needs
+  `2.2531000000000001e+21`. That affected the JSON a result is written as and
+  also string conversion (`cat`, `in`, `substr`). `shortestDigits` tries
+  shorter strings and keeps one that reads back to the same double; it was
+  checked against Python's `repr` on over a hundred thousand large doubles
+  (3,673 boundary cases, all reproduced, none changed wrongly). Separately,
+  and as a precaution rather than a fix (the mismatch was in the digits
+  written, not in the parse), decimal-to-double conversion for JSON numbers
+  and numeric strings is now computed exactly in `Rational` and rounded once
+  (`decimalToDouble`), so it rests on `fromRational` alone and not on the
+  `scientific` library's conversion. Overflow and underflow are decided from
+  the digit count, so a hostile exponent cannot build an enormous number.

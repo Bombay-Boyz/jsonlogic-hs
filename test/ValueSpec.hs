@@ -7,7 +7,7 @@ import qualified Data.Aeson.KeyMap as KeyMap
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Test.Hspec
-import Test.QuickCheck (Gen, arbitrary, elements, forAll, listOf, oneof, (==>))
+import Test.QuickCheck (Gen, arbitrary, choose, elements, forAll, listOf, oneof, (==>))
 
 import JsonLogic.Core.Value
 
@@ -46,6 +46,9 @@ numberCases =
   , (-0.0, "0")
   , (1.2345e25, "1.2345e+25")
   , (5e-324, "5e-324")
+  , (2.2531e21, "2.2531e+21")
+  , (-2.2531e21, "-2.2531e+21")
+  , (9007199254740992, "9007199254740992")
   , (nan, "NaN")
   , (infinity, "Infinity")
   , (negate infinity, "-Infinity")
@@ -67,6 +70,12 @@ toNumberCases =
   , (VArr [VNum 7], 7)
   , (VStr "Infinity", infinity)
   , (VStr "-Infinity", negate infinity)
+  , (VStr "-2.2531e+21", -2.2531e21)
+  , (VStr "2.2531e21", 2.2531e21)
+  , (VStr "1e400", infinity)
+  , (VStr "1e-400", 0)
+  , (VStr "5e-324", 5e-324)
+  , (VStr "123456789012345678901234567890", 1.2345678901234568e29)
   ]
 
 parseFloatCases :: [(Val, Double)]
@@ -122,6 +131,17 @@ remainderCases =
   , (5.5, 2, 1.5)
   , (5, infinity, 5)
   ]
+
+-- | Doubles across the whole range, including the large ones where digit
+-- generation has edge cases.
+genWideDouble :: Gen Double
+genWideDouble = do
+  mantissa <- choose (-1000000000000000, 1000000000000000) :: Gen Integer
+  power <- choose (-300, 290) :: Gen Int
+  pure (fromInteger mantissa * 10 ^^ power)
+
+roundTripsThroughJson :: Double -> Bool
+roundTripsThroughJson d = fromValue (toValue (VNum d)) == VNum d
 
 spec :: Spec
 spec = describe "JsonLogic.Core.Value" $ do
@@ -203,3 +223,7 @@ spec = describe "JsonLogic.Core.Value" $ do
     it "numberToString round-trips through toNumber" $
       forAll (arbitrary :: Gen Double) $ \d ->
         not (isNaN d || isInfinite d) ==> toNumber (VStr (numberToString d)) == d
+    it "writing a double as JSON and reading it back is the identity" $
+      forAll genWideDouble roundTripsThroughJson
+    it "numberToString round-trips for large and tiny doubles too" $
+      forAll genWideDouble $ \d -> toNumber (VStr (numberToString d)) == d

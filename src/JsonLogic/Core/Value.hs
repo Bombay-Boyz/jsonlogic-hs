@@ -43,8 +43,9 @@ import qualified Data.Aeson as Aeson
 import qualified Data.Aeson.KeyMap as KeyMap
 import Data.Char (digitToInt, isDigit, isHexDigit, isSpace)
 import Data.Foldable (toList)
-import Data.List (dropWhileEnd, stripPrefix)
-import Data.Scientific (Scientific, fromFloatDigits, scientific, toBoundedRealFloat)
+import Data.List (dropWhileEnd, sortOn, stripPrefix)
+import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
+import Data.Scientific (Scientific, base10Exponent, coefficient, scientific)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Numeric (floatToDigits)
@@ -92,13 +93,29 @@ toValue VUndefined = Aeson.Null
 toValue (VBool flag) = Aeson.Bool flag
 toValue (VNum d)
   | isNaN d || isInfinite d = Aeson.Null
-  | otherwise = Aeson.Number (fromFloatDigits d)
+  | otherwise = Aeson.Number (doubleToScientific d)
 toValue (VStr s) = Aeson.String s
 toValue (VArr items) = Aeson.toJSON (map toValue items)
 toValue (VObj fields) = Aeson.Object (KeyMap.map toValue fields)
 
 scientificToDouble :: Scientific -> Double
-scientificToDouble = either id id . toBoundedRealFloat
+scientificToDouble s = decimalToDouble (coefficient s) (toInteger (base10Exponent s))
+
+-- | @mantissa * 10 ^ exponent10@ as the nearest double, computed exactly
+-- in 'Rational' and rounded once, so correctness rests on 'fromRational'
+-- alone and not on a library's conversion. Magnitudes that must overflow
+-- or underflow are decided from the digit count, so a hostile exponent
+-- cannot make this build an enormous number.
+decimalToDouble :: Integer -> Integer -> Double
+decimalToDouble mantissa exponent10
+  | mantissa == 0 = 0
+  | mantissa < 0 = negate (decimalToDouble (negate mantissa) exponent10)
+  | magnitude > 310 = infinity
+  | magnitude < -330 = 0
+  | exponent10 >= 0 = fromRational (fromInteger (mantissa * 10 ^ exponent10))
+  | otherwise = fromRational (fromInteger mantissa / fromInteger (10 ^ negate exponent10))
+  where
+    magnitude = exponent10 + toInteger (length (show mantissa))
 
 -- ---------------------------------------------------------------------
 -- Truthiness
@@ -147,7 +164,50 @@ numberToString d
   | d < 0 = "-" <> numberToString (negate d)
   | otherwise = Text.pack (layoutDigits (concatMap show digits) (length digits) pointPosition)
   where
-    (digits, pointPosition) = floatToDigits 10 d
+    (digits, pointPosition) = shortestDigits d
+
+-- | The shortest digits that read back as the same double, in the way
+-- ECMAScript prints them, as @(digits, pointPosition)@ like 'floatToDigits'.
+--
+-- GHC's 'floatToDigits' only accepts digit strings strictly inside the
+-- rounding interval of the double. ECMAScript also accepts the exact
+-- halfway point when the double's significand is even, because
+-- round-half-even reads it back to the same double. For doubles of 2^53 and
+-- above those points are whole numbers, so a shorter string can exist where
+-- GHC needs one more digit: @2.2531e21@, not @2.2531000000000001e21@. Below
+-- 2^53 the halfway points have too many digits to matter, so GHC's answer
+-- stands. (The differential test found this; the rule was checked against
+-- Python's @repr@ on over a hundred thousand large doubles.)
+shortestDigits :: Double -> ([Int], Int)
+shortestDigits d
+  | d < 9007199254740992 = generated
+  | otherwise = fromMaybe generated (listToMaybe (mapMaybe shorter [1 .. length digits - 1]))
+  where
+    generated@(digits, pointPosition) = floatToDigits 10 d
+    exact = toRational d
+    shorter k =
+      case sortOn rank (filter readsBack [lower, upper]) of
+        best : _ -> Just (digitsOf best k)
+        [] -> Nothing
+      where
+        scale = 10 ^^ (pointPosition - k) :: Rational
+        scaled = exact / scale
+        lower = floor scaled :: Integer
+        upper = ceiling scaled :: Integer
+        readsBack m = fromRational (fromInteger m * scale) == d
+        rank m = (abs (fromInteger m * scale - exact), odd m)
+    digitsOf m k = (map digitToInt (dropWhileEnd (== '0') text), pointPosition + length text - k)
+      where
+        text = show m
+
+-- | A double as the decimal JavaScript would print for it.
+doubleToScientific :: Double -> Scientific
+doubleToScientific d
+  | d == 0 = 0
+  | d < 0 = negate (doubleToScientific (negate d))
+  | otherwise = scientific (digitsToInteger (concatMap show digits)) (pointPosition - length digits)
+  where
+    (digits, pointPosition) = shortestDigits d
 
 -- | @layoutDigits ds k n@: @k@ significant digits @ds@ whose decimal
 -- point sits @n@ places to the right of their start.
@@ -275,16 +335,13 @@ exponentPart input = case input of
 digitsToInteger :: String -> Integer
 digitsToInteger = foldl (\acc c -> acc * 10 + toInteger (digitToInt c)) 0
 
--- | Build the double from decimal digits and a power of ten. The
--- exponent is clamped first: anything beyond it overflows or underflows
--- regardless, and 'scientificToDouble' saturates rather than hanging.
+-- | Build the double from decimal digits and a power of ten, correctly
+-- rounded (see 'decimalToDouble').
 assemble :: String -> String -> Integer -> Double
 assemble intDigits fracDigits exponentValue =
-  scientificToDouble (scientific coefficient (fromInteger clamped))
-  where
-    coefficient = digitsToInteger (intDigits ++ fracDigits)
-    shifted = exponentValue - toInteger (length fracDigits)
-    clamped = max (-100000) (min 100000 shifted)
+  decimalToDouble
+    (digitsToInteger (intDigits ++ fracDigits))
+    (exponentValue - toInteger (length fracDigits))
 
 -- ---------------------------------------------------------------------
 -- Equality
