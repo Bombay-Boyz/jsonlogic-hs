@@ -103,7 +103,7 @@ algebra operators node = case node of
   Add operands -> \env -> VNum . foldl (\total v -> total + parseFloat v) 0 <$> evalAll operands env
   Sub x y -> \env -> do
     a <- x env
-    b <- traverse ($ env) y
+    b <- definedOperand <$> traverse ($ env) y
     Right (VNum (maybe (negate (toNumber a)) (\v -> toNumber a - toNumber v) b))
   Mul operands -> \env -> multiply <$> evalAll operands env
   Div x y -> binary (\a b -> VNum (toNumber a / toNumber b)) x y
@@ -128,7 +128,7 @@ algebra operators node = case node of
   Substr source start len -> \env -> do
     text <- source env
     from <- start env
-    limit <- traverse ($ env) len
+    limit <- definedOperand <$> traverse ($ env) len
     Right (VStr (substring (toJsString text) from limit))
   Log operand -> operand
   CustomOp name operands -> \env -> do
@@ -156,7 +156,7 @@ between :: (Val -> Val -> Bool) -> Eval -> Eval -> Maybe Eval -> Eval
 between holds x y z env = do
   a <- x env
   b <- y env
-  c <- traverse ($ env) z
+  c <- definedOperand <$> traverse ($ env) z
   Right (VBool (maybe (holds a b) (\third -> holds a b && holds b third) c))
 
 -- | Condition/consequent pairs, then an optional else; no branch means null.
@@ -280,6 +280,15 @@ lookupVariable dat path notFound
     isEmptyPath VUndefined = True
     isEmptyPath (VStr s) = Text.null s
     isEmptyPath _ = False
+
+-- | An optional operand that evaluates to undefined counts as absent: the
+-- reference tests the /value/ (@c === undefined@), not how many
+-- arguments were written. So @{"-": [x, y]}@ negates @x@ when @y@ is
+-- undefined, @<@ and @<=@ drop an undefined third operand, and @substr@
+-- ignores an undefined end.
+definedOperand :: Maybe Val -> Maybe Val
+definedOperand (Just VUndefined) = Nothing
+definedOperand other = other
 
 -- | The reference's fallback for a missing variable: an undefined
 -- fallback becomes null.

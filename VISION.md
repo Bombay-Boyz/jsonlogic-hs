@@ -489,3 +489,10 @@ be revisited deliberately rather than rediscovered.
   it: an undefined path means the whole datum, an undefined fallback becomes
   `null`, and an undefined property counts as missing. This supersedes the
   earlier decision (§10) to map `undefined` to `null`.
+- **An optional operand that evaluates to `undefined` counts as absent.**
+  Found by the second differential run (20000 cases, seed 2: five
+  mismatches, all this). The reference decides "was it given" by testing the
+  value, not the argument count, in four places: `{"-": [x, y]}` negates `x`
+  when `y` is undefined, `<` and `<=` drop an undefined third operand, and
+  `substr` ignores an undefined end. Handled by `definedOperand` in `Eval.hs`.
+  Distinct from `null`: `{"substr": ["jsonlogic", 4, null]}` is `""`.
