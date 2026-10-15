@@ -21,6 +21,7 @@ genScalar :: Gen Val
 genScalar =
   oneof
     [ pure VNull
+    , pure VUndefined
     , VBool <$> arbitrary
     , VNum <$> oneof [elements [0, -0.0, 1, -1, 0.5, infinity, negate infinity, nan], arbitrary]
     , VStr . Text.pack <$> listOf (elements "ab01 .-eE")
@@ -96,6 +97,10 @@ looseCases =
   , (VArr [], VBool False, True)
   , (VArr [], VArr [], False)
   , (VNum nan, VNum nan, False)
+  , (VUndefined, VNull, True)
+  , (VUndefined, VUndefined, True)
+  , (VUndefined, VNum 0, False)
+  , (VUndefined, VBool False, False)
   ]
 
 lessCases :: [(Val, Val, Bool)]
@@ -122,8 +127,8 @@ spec :: Spec
 spec = describe "JsonLogic.Core.Value" $ do
   describe "truthy" $ do
     it "is false for exactly the reference's falsy values" $
-      map truthy [VNull, VBool False, VNum 0, VNum nan, VStr "", VArr []]
-        `shouldBe` replicate 6 False
+      map truthy [VNull, VUndefined, VBool False, VNum 0, VNum nan, VStr "", VArr []]
+        `shouldBe` replicate 7 False
     it "is true for everything else, including \"0\" and empty objects" $
       map truthy [VBool True, VNum 1, VNum (-1), VStr "0", VStr "a", VArr [VNull], VObj KeyMap.empty]
         `shouldBe` replicate 7 True

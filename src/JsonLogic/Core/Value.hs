@@ -52,6 +52,12 @@ import Numeric (floatToDigits)
 -- | A value during evaluation.
 data Val
   = VNull
+  | -- | JavaScript's @undefined@, which an empty @and@ or @or@ yields. It
+    -- is not 'VNull': it converts to @NaN@ (not 0) and to the string
+    -- @"undefined"@ (not @"null"@), and @undefined === null@ is false.
+    -- Written back as JSON @null@. The differential test found the
+    -- difference by folding the two together.
+    VUndefined
   | VBool Bool
   | VNum Double
   | VStr Text
@@ -82,6 +88,7 @@ fromValue (Aeson.Object fields) = VObj (KeyMap.map fromValue fields)
 -- | Write a result back as JSON. @NaN@ and infinities become @null@.
 toValue :: Val -> Aeson.Value
 toValue VNull = Aeson.Null
+toValue VUndefined = Aeson.Null
 toValue (VBool flag) = Aeson.Bool flag
 toValue (VNum d)
   | isNaN d || isInfinite d = Aeson.Null
@@ -101,6 +108,7 @@ scientificToDouble = either id id . toBoundedRealFloat
 -- falsy (jsonlogic.com/truthy).
 truthy :: Val -> Bool
 truthy VNull = False
+truthy VUndefined = False
 truthy (VBool flag) = flag
 truthy (VNum d) = not (d == 0 || isNaN d)
 truthy (VStr s) = not (Text.null s)
@@ -114,6 +122,7 @@ truthy (VObj _) = True
 -- | JavaScript's @String(value)@.
 toJsString :: Val -> Text
 toJsString VNull = "null"
+toJsString VUndefined = "undefined"
 toJsString (VBool True) = "true"
 toJsString (VBool False) = "false"
 toJsString (VNum d) = numberToString d
@@ -125,6 +134,7 @@ toJsString (VObj _) = "[object Object]"
 -- except @null@ becomes the empty string.
 toJoinText :: Val -> Text
 toJoinText VNull = ""
+toJoinText VUndefined = ""
 toJoinText value = toJsString value
 
 -- | JavaScript's @Number::toString@ (ECMAScript, radix 10): the shortest
@@ -162,6 +172,7 @@ layoutDigits ds k n
 -- | JavaScript's @Number(value)@ (the abstract @ToNumber@).
 toNumber :: Val -> Double
 toNumber VNull = 0
+toNumber VUndefined = nan
 toNumber (VBool flag) = boolToNumber flag
 toNumber (VNum d) = d
 toNumber (VStr s) = stringToNumber s
@@ -283,6 +294,7 @@ assemble intDigits fracDigits exponentValue =
 -- module header).
 strictEquals :: Val -> Val -> Bool
 strictEquals VNull VNull = True
+strictEquals VUndefined VUndefined = True
 strictEquals (VBool a) (VBool b) = a == b
 strictEquals (VNum a) (VNum b) = a == b
 strictEquals (VStr a) (VStr b) = a == b
@@ -290,6 +302,11 @@ strictEquals _ _ = False
 
 -- | JavaScript's @==@ (the abstract equality comparison).
 looseEquals :: Val -> Val -> Bool
+looseEquals VUndefined VUndefined = True
+looseEquals VUndefined VNull = True
+looseEquals VNull VUndefined = True
+looseEquals VUndefined _ = False
+looseEquals _ VUndefined = False
 looseEquals VNull VNull = True
 looseEquals VNull _ = False
 looseEquals _ VNull = False

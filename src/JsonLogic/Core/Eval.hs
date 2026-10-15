@@ -167,17 +167,19 @@ evalIf (condition : consequent : rest) env = do
 evalIf [fallback] env = fallback env
 evalIf [] _ = Right VNull
 
--- | The first falsy operand, or the last; null when there are none.
+-- | The first falsy operand, or the last; JavaScript's @undefined@ (not
+-- null) when there are none.
 evalAnd :: [Eval] -> Eval
-evalAnd [] _ = Right VNull
+evalAnd [] _ = Right VUndefined
 evalAnd [only] env = only env
 evalAnd (first : rest) env = do
   value <- first env
   if truthy value then evalAnd rest env else Right value
 
--- | The first truthy operand, or the last; null when there are none.
+-- | The first truthy operand, or the last; JavaScript's @undefined@ (not
+-- null) when there are none.
 evalOr :: [Eval] -> Eval
-evalOr [] _ = Right VNull
+evalOr [] _ = Right VUndefined
 evalOr [only] env = only env
 evalOr (first : rest) env = do
   value <- first env
@@ -272,17 +274,29 @@ missingSome count options env
 lookupVariable :: Val -> Val -> Val -> Val
 lookupVariable dat path notFound
   | isEmptyPath path = dat
-  | otherwise = fromMaybe notFound (descend dat (Text.splitOn "." (toJsString path)))
+  | otherwise = fromMaybe (nullIfUndefined notFound) (descend dat (Text.splitOn "." (toJsString path)))
   where
     isEmptyPath VNull = True
+    isEmptyPath VUndefined = True
     isEmptyPath (VStr s) = Text.null s
     isEmptyPath _ = False
+
+-- | The reference's fallback for a missing variable: an undefined
+-- fallback becomes null.
+nullIfUndefined :: Val -> Val
+nullIfUndefined VUndefined = VNull
+nullIfUndefined value = value
 
 -- | Follow the path one key at a time; 'Nothing' is "no such property".
 descend :: Val -> [Text] -> Maybe Val
 descend current [] = Just current
 descend VNull _ = Nothing
-descend current (key : keys) = property current key >>= \child -> descend child keys
+descend VUndefined _ = Nothing
+descend current (key : keys) = property current key >>= follow
+  where
+    -- a property that is itself undefined counts as missing, as in the reference
+    follow VUndefined = Nothing
+    follow child = descend child keys
 
 -- | JavaScript property access on a JSON value: object keys, array and
 -- string indices, and @length@.

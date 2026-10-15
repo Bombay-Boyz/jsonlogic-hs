@@ -93,13 +93,10 @@ data RuleF a
     -- form is defined by the reference (it yields @null@: no branch
     -- matched and there is no else), so a plain list is the right shape.
     If [a]
-  | -- | Empty form ('And []') evaluates to JSON @null@ — the reference
-    -- implementation returns JS @undefined@ for this case (an
-    -- uninitialised tracking variable when the loop never runs), which
-    -- has no direct 'Value' equivalent; @null@ is the closest and most
-    -- consistent mapping, matching how the rest of the spec represents
-    -- "no value" (e.g. @var@'s default). Confirmed against source, not
-    -- guessed — see the note at the bottom of this module.
+  | -- | Empty form ('And []') evaluates to JS @undefined@, as in the
+    -- reference (a tracking variable never assigned because the loop
+    -- never runs). It is a value of its own during evaluation, distinct
+    -- from @null@, and is written back as JSON @null@. Same for 'Or'.
     And [a]
   | Or [a]
   | -- | @{"!": [x]}@ — logical negation.

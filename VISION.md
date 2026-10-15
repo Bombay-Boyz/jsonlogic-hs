@@ -478,3 +478,14 @@ be revisited deliberately rather than rediscovered.
   three of the deviations are real: it ignores extra arguments (`{"-":[5,2,1]}`
   is 3), treats the same array reached twice as equal, and accepts a
   two-argument `reduce`.
+- **Correction found by the differential test: `undefined` is not `null`.**
+  The reference's empty `and` / `or` yields JavaScript `undefined`, and I had
+  modelled it as `null`. They differ as soon as the value flows on:
+  `Math.max(undefined)` is `NaN` where `max(null)` is `0`, `String(undefined)`
+  is `"undefined"`, `undefined === null` is false, and `undefined >= x` is
+  false. 3000 random rules gave 2996 agreements; the four mismatches all
+  had an empty `and` as an operand. `Val` now has a `VUndefined`, written
+  back as JSON `null`. `var` follows the reference's three special cases for
+  it: an undefined path means the whole datum, an undefined fallback becomes
+  `null`, and an undefined property counts as missing. This supersedes the
+  earlier decision (§10) to map `undefined` to `null`.
