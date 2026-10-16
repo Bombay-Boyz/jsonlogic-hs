@@ -1,7 +1,5 @@
-{-# LANGUAGE DeriveFunctor     #-}
-{-# LANGUAGE DeriveFoldable    #-}
 {-# LANGUAGE DeriveTraversable #-}
-{-# LANGUAGE TemplateHaskell   #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 -- |
 -- Module      : JsonLogic.Core.Rule
@@ -48,9 +46,9 @@ module JsonLogic.Core.Rule
 
 import Data.Aeson (Value)
 import Data.Eq.Deriving (deriveEq1)
+import Data.Fix (Fix)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Text (Text)
-import Data.Fix (Fix)
 import Text.Show.Deriving (deriveShow1)
 
 -- | A builtin or custom operator's name, as it appears as the sole key

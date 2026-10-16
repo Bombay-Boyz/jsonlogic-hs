@@ -41,6 +41,7 @@ module JsonLogic.Core.Value
 
 import qualified Data.Aeson as Aeson
 import qualified Data.Aeson.KeyMap as KeyMap
+import Data.Bifunctor (first)
 import Data.Char (digitToInt, isDigit, isHexDigit, isSpace)
 import Data.Foldable (toList)
 import Data.List (dropWhileEnd, sortOn, stripPrefix)
@@ -295,7 +296,7 @@ decimalPrefix :: String -> Maybe (Double, String)
 decimalPrefix input =
   case stripPrefix "Infinity" afterSign of
     Just remainder -> Just (applySign infinity, remainder)
-    Nothing -> fmap (\(magnitude, remainder) -> (applySign magnitude, remainder)) (unsignedDecimal afterSign)
+    Nothing -> fmap (first applySign) (unsignedDecimal afterSign)
   where
     (negative, afterSign) = case input of
       '-' : rest -> (True, rest)

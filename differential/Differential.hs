@@ -25,6 +25,7 @@ import Data.Aeson.Key (Key)
 import qualified Data.Aeson.KeyMap as KeyMap
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.ByteString.Lazy.Char8 as Char8
+import Data.Maybe (catMaybes)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import System.Directory (createDirectoryIfMissing)
@@ -48,9 +49,30 @@ data Ctx = Top | Iter | Fold
 
 trickyStrings :: [Text]
 trickyStrings =
-  [ "", "0", "1", "2", "a", "b", "abc", "jsonlogic", " 12 ", "1e3", "0x10"
-  , "-3", ".5", "5.", "Infinity", "-Infinity", "NaN", "10", "9", "true"
-  , "null", "1,2", "[object Object]", "a.b"
+  [ ""
+  , "0"
+  , "1"
+  , "2"
+  , "a"
+  , "b"
+  , "abc"
+  , "jsonlogic"
+  , " 12 "
+  , "1e3"
+  , "0x10"
+  , "-3"
+  , ".5"
+  , "5."
+  , "Infinity"
+  , "-Infinity"
+  , "NaN"
+  , "10"
+  , "9"
+  , "true"
+  , "null"
+  , "1,2"
+  , "[object Object]"
+  , "a.b"
   ]
 
 scalarPaths :: [Text]
@@ -369,7 +391,7 @@ main = do
           ++ " cases"
       )
     exitFailure
-  let mismatches = [m | Just m <- zipWith3 compareCase [1 ..] cases (map decode answered)]
+  let mismatches = catMaybes (zipWith3 compareCase [1 ..] cases (map decode answered))
   mapM_ putStrLn (concatMap render (take 12 mismatches))
   writeFile (dir ++ "/mismatches.txt") (unlines (concatMap render mismatches))
   putStrLn

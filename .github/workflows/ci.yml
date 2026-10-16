@@ -28,3 +28,36 @@ jobs:
       - run: cabal update
       - run: cabal build all
       - run: cabal test all --test-show-details=direct
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/lint.sh
+
+  differential:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: haskell-actions/setup@v2
+        with:
+          ghc-version: "9.14.1"
+          cabal-version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cabal/store
+            dist-newstyle
+          key: ${{ runner.os }}-ghc-9.14.1-diff-${{ hashFiles('**/*.cabal') }}
+          restore-keys: |
+            ${{ runner.os }}-ghc-9.14.1-diff-
+
+      - run: cd differential && npm install --no-audit --no-fund
+      - run: cabal update
+      - run: cabal run jsonlogic-hs-differential -- 5000 1

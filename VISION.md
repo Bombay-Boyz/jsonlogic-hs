@@ -514,3 +514,15 @@ be revisited deliberately rather than rediscovered.
   (`decimalToDouble`), so it rests on `fromRational` alone and not on the
   `scientific` library's conversion. Overflow and underflow are decided from
   the digit count, so a hostile exponent cannot build an enormous number.
+- **Lint and format are enforced, with the same pinned tools locally and in
+  CI.** `scripts/lint.sh` runs hlint 3.10 and fourmolu 0.21.0.0 over every
+  Haskell file and fails on any hint or unformatted file (`--fix` formats in
+  place); `scripts/fetch-tools.sh` downloads those exact versions into
+  `.tools/`. Thirteen hlint hints were fixed (nine eta-reductions in
+  `Eval.hs`, two redundant `LANGUAGE` pragmas, two idiom suggestions) and the
+  whole tree was formatted (doc comments stay as `-- |` line comments:
+  `haddock-style: single-line` in `fourmolu.yaml`). Both tools parse every file with GHC's own
+  parser, so this is also the first check of the code that does not depend on
+  a full build. CI now has three jobs: build and test, lint, and a
+  5000-case differential run against `json-logic-js` 2.0.5 (pinned), so a
+  change that drifts from the reference fails the build.

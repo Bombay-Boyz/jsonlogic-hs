@@ -153,17 +153,25 @@ spec = describe "JsonLogic.Core.Value" $ do
       map truthy [VBool True, VNum 1, VNum (-1), VStr "0", VStr "a", VArr [VNull], VObj KeyMap.empty]
         `shouldBe` replicate 7 True
 
-  describe "numberToString" $
-    it "follows the ECMAScript Number-to-string rules" $
-      map (numberToString . fst) numberCases `shouldBe` map snd numberCases
+  describe "numberToString"
+    $ it "follows the ECMAScript Number-to-string rules"
+    $ map (numberToString . fst) numberCases `shouldBe` map snd numberCases
 
   describe "toNumber" $ do
     it "converts the way Number() does" $
       map (toNumber . fst) toNumberCases `shouldBe` map snd toNumberCases
     it "gives NaN for malformed input" $
-      map (isNaN . toNumber)
-        [ VStr "abc", VStr "1 2", VStr "0x", VStr "--1", VStr "1e", VStr "+-1"
-        , VStr "infinity", VObj KeyMap.empty, VArr [VNum 1, VNum 2]
+      map
+        (isNaN . toNumber)
+        [ VStr "abc"
+        , VStr "1 2"
+        , VStr "0x"
+        , VStr "--1"
+        , VStr "1e"
+        , VStr "+-1"
+        , VStr "infinity"
+        , VObj KeyMap.empty
+        , VArr [VNum 1, VNum 2]
         ]
         `shouldBe` replicate 9 True
 
@@ -215,15 +223,19 @@ spec = describe "JsonLogic.Core.Value" $ do
 
   describe "laws" $ do
     it "looseEquals is symmetric" $
-      forAll genVal $ \x -> forAll genVal $ \y -> looseEquals x y == looseEquals y x
+      forAll genVal $
+        \x -> forAll genVal $ \y -> looseEquals x y == looseEquals y x
     it "strictEquals implies looseEquals" $
-      forAll genVal $ \x -> forAll genVal $ \y -> not (strictEquals x y) || looseEquals x y
+      forAll genVal $
+        \x -> forAll genVal $ \y -> not (strictEquals x y) || looseEquals x y
     it "lessThan is asymmetric" $
-      forAll genVal $ \x -> forAll genVal $ \y -> not (lessThan x y && lessThan y x)
+      forAll genVal $
+        \x -> forAll genVal $ \y -> not (lessThan x y && lessThan y x)
     it "numberToString round-trips through toNumber" $
       forAll (arbitrary :: Gen Double) $ \d ->
         not (isNaN d || isInfinite d) ==> toNumber (VStr (numberToString d)) == d
     it "writing a double as JSON and reading it back is the identity" $
       forAll genWideDouble roundTripsThroughJson
     it "numberToString round-trips for large and tiny doubles too" $
-      forAll genWideDouble $ \d -> toNumber (VStr (numberToString d)) == d
+      forAll genWideDouble $
+        \d -> toNumber (VStr (numberToString d)) == d

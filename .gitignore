@@ -5,3 +5,4 @@ dist-newstyle/
 .HTF/
 differential/node_modules/
 differential/out/
+.tools/

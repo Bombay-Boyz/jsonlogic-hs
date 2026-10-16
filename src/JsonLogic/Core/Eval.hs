@@ -73,7 +73,7 @@ evaluateWith operators rule input =
 algebra :: Operators -> RuleF Eval -> Eval
 algebra operators node = case node of
   Lit literal -> const (Right (fromValue literal))
-  Arr items -> \env -> VArr <$> evalAll items env
+  Arr items -> fmap VArr . evalAll items
   Var path fallback -> \env -> do
     key <- path env
     notFound <- maybe (Right VNull) ($ env) fallback
@@ -88,8 +88,8 @@ algebra operators node = case node of
   If branches -> evalIf branches
   And operands -> evalAnd operands
   Or operands -> evalOr operands
-  Not operand -> \env -> VBool . not . truthy <$> operand env
-  Cast operand -> \env -> VBool . truthy <$> operand env
+  Not operand -> fmap (VBool . not . truthy) . operand
+  Cast operand -> fmap (VBool . truthy) . operand
   LooseEq x y -> binary (\a b -> VBool (looseEquals a b)) x y
   StrictEq x y -> binary (\a b -> VBool (strictEquals a b)) x y
   LooseNeq x y -> binary (\a b -> VBool (not (looseEquals a b))) x y
@@ -98,14 +98,14 @@ algebra operators node = case node of
   Lte x y z -> between lessOrEqual x y z
   Gt x y -> binary (\a b -> VBool (lessThan b a)) x y
   Gte x y -> binary (\a b -> VBool (lessOrEqual b a)) x y
-  Max operands -> \env -> VNum . maximumJs . map toNumber <$> evalAll operands env
-  Min operands -> \env -> VNum . minimumJs . map toNumber <$> evalAll operands env
-  Add operands -> \env -> VNum . foldl (\total v -> total + parseFloat v) 0 <$> evalAll operands env
+  Max operands -> fmap (VNum . maximumJs . map toNumber) . evalAll operands
+  Min operands -> fmap (VNum . minimumJs . map toNumber) . evalAll operands
+  Add operands -> fmap (VNum . foldl (\total v -> total + parseFloat v) 0) . evalAll operands
   Sub x y -> \env -> do
     a <- x env
     b <- definedOperand <$> traverse ($ env) y
     Right (VNum (maybe (negate (toNumber a)) (\v -> toNumber a - toNumber v) b))
-  Mul operands -> \env -> multiply <$> evalAll operands env
+  Mul operands -> fmap multiply . evalAll operands
   Div x y -> binary (\a b -> VNum (toNumber a / toNumber b)) x y
   Mod x y -> binary (\a b -> VNum (remainderJs (toNumber a) (toNumber b))) x y
   Map collection logic ->
@@ -122,9 +122,9 @@ algebra operators node = case node of
   Some collection logic ->
     withCollection collection (VBool False) $ \items ->
       if null items then Right (VBool False) else VBool <$> anyTruthy logic items
-  Merge operands -> \env -> VArr . concatMap flattenOnce <$> evalAll operands env
+  Merge operands -> fmap (VArr . concatMap flattenOnce) . evalAll operands
   In needle haystack -> binary (\a b -> VBool (contains a b)) needle haystack
-  Cat operands -> \env -> VStr . Text.concat . map toJoinText <$> evalAll operands env
+  Cat operands -> fmap (VStr . Text.concat . map toJoinText) . evalAll operands
   Substr source start len -> \env -> do
     text <- source env
     from <- start env
@@ -144,7 +144,7 @@ algebra operators node = case node of
 -- Combinators over compiled operands
 -- ---------------------------------------------------------------------
 
-evalAll :: Traversable t => t Eval -> Val -> Either EvalError (t Val)
+evalAll :: (Traversable t) => t Eval -> Val -> Either EvalError (t Val)
 evalAll operands env = traverse ($ env) operands
 
 binary :: (Val -> Val -> Val) -> Eval -> Eval -> Eval

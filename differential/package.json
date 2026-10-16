@@ -4,6 +4,6 @@
   "private": true,
   "description": "The reference implementation, wrapped for differential testing against jsonlogic-hs.",
   "dependencies": {
-    "json-logic-js": "^2.0.0"
+    "json-logic-js": "2.0.5"
   }
 }
