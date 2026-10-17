@@ -526,3 +526,22 @@ be revisited deliberately rather than rediscovered.
   a full build. CI now has three jobs: build and test, lint, and a
   5000-case differential run against `json-logic-js` 2.0.5 (pinned), so a
   change that drifts from the reference fails the build.
+- **Release metadata, taken from `tadka.cabal`.** Licence MPL-2.0 with a
+  `LICENSE` file (the canonical text, as published in the SPDX licence list);
+  author, maintainer, copyright line, homepage and bug-report URLs follow the
+  same pattern as the already-published `tadka`. This replaces the
+  BSD-3-Clause placeholder, which was a scaffold default and not a decision.
+- **`-Werror` is a flag, not unconditional.** `flag(werror)` is off by
+  default and on through `cabal.project` and in CI on GHC 9.14.1, because
+  `cabal check` rejects an unconditional `-Werror` and new compiler warnings
+  must not break downstream installs. Standard 5.1 still holds for our own
+  builds.
+- **The differential executable sits behind `flag(differential)`.** It needs
+  Node.js, so it is not buildable by default and `cabal install` never builds
+  it; `cabal.project` turns it on for development and CI.
+- **Dependency bounds.** `base`, `text`, `aeson` and `bytestring` use the
+  ranges already vetted across GHC 9.6 to 9.14 in `tadka`; the rest use the
+  PVP major version recorded in the build plan when the cabal file was
+  generated. CI builds against GHC 9.6.7, 9.8.4, 9.10.3, 9.12.4 and 9.14.1,
+  and `tested-with` lists only what that matrix has verified: currently just
+  GHC 9.14.1, until the matrix has run.

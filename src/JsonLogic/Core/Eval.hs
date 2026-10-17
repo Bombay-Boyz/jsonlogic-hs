@@ -6,7 +6,7 @@
 -- Evaluation: a catamorphism (a fold) over the rule tree.
 --
 -- The fold's carrier is a /function/ from the data a rule is evaluated
--- against to a result ('Eval'), not a plain value. That is what lets
+-- against to a result (@Eval@), not a plain value. That is what lets
 -- @map@, @filter@, @reduce@ and friends run the same sub-rule once per
 -- element against a different datum, and what makes @if@, @and@ and @or@
 -- short-circuit for free: a branch not taken is a function never applied
@@ -69,7 +69,7 @@ evaluateWith operators rule input =
   toValue <$> cata (algebra operators) rule (fromValue input)
 
 -- | One layer of the fold: given each child already compiled to an
--- 'Eval', compile this node.
+-- @Eval@, compile this node.
 algebra :: Operators -> RuleF Eval -> Eval
 algebra operators node = case node of
   Lit literal -> const (Right (fromValue literal))

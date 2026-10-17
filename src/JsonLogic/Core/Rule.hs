@@ -33,7 +33,7 @@
 -- __Design note (Standard 4.7 / 2.11), found on self-audit:__ a plain
 -- @deriving Show@ on 'RuleF' gives @Show (RuleF a)@, not @Show (Fix
 -- RuleF)@ — the type actually used everywhere as 'Rule'. The latter
--- needs a 'Show1'/'Eq1' instance (from "Data.Functor.Classes"), which
+-- needs a @Show1@/@Eq1@ instance (from "Data.Functor.Classes"), which
 -- @recursion-schemes@ itself relies on to give 'Fix' its own 'Show'/'Eq'.
 -- Stock deriving cannot produce these; @deriving-compat@'s
 -- Template-Haskell derivers can, correctly, and are used below rather
@@ -58,7 +58,7 @@ newtype OperatorName = OperatorName Text
   deriving (Eq, Ord, Show)
 
 -- | One layer of a JsonLogic rule tree, parameterised over the
--- recursive position @a@. See 'Rule' for the closed, recursive type.
+-- recursive position @a@. See @Rule@ for the closed, recursive type.
 --
 -- Every constructor's Haddock states which part of the spec it
 -- implements — the invariant, not a restatement of the field names

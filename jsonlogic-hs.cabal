@@ -1,100 +1,138 @@
 cabal-version:      3.0
-name:                jsonlogic-hs
-version:             0.1.0.0
-synopsis:            A native, spec-conformant JsonLogic implementation for Haskell
-description:         See VISION.md and ENGINEERING_STANDARD.md for the design
-                     and engineering rationale this project is built against.
-license:             BSD-3-Clause
--- TODO: add a LICENSE file matching the license above before publishing.
-author:              Sabrinathan Nair
-maintainer:          TODO@example.com
-copyright:           2026 Sabrinathan Nair
-category:            Language
-build-type:          Simple
-extra-source-files:  README.md
-                    , VISION.md
-                    , ENGINEERING_STANDARD.md
+name:               jsonlogic-hs
+version:            0.1.0.0
+synopsis:           JsonLogic rule engine, checked against the JavaScript reference
+description:
+  jsonlogic-hs is a native Haskell implementation of JsonLogic
+  (<https://jsonlogic.com>), a small, closed rule language that is itself
+  JSON, so rules can be stored, shared between systems, and evaluated
+  against data without running arbitrary code.
+  .
+  It passes all 278 cases of the classic shared test suite and agrees with
+  the JavaScript reference implementation (json-logic-js 2.0.5) on 100,000
+  randomly generated rules, including its type-coercion rules and its
+  handling of NaN, infinities and undefined. Rules are read into a closed,
+  exhaustively matched tree with a depth bound and evaluated by a fold.
+  Custom operators are supplied by the caller.
+  .
+  The supported API is the "JsonLogic" module. The "JsonLogic.Core"
+  modules are exposed for advanced use and may change before 1.0.
+category:           Data, JSON
+license:            MPL-2.0
+license-file:       LICENSE
+author:             Sabrinathan Nair
+maintainer:         259497327+Bombay-Boyz@users.noreply.github.com
+copyright:          (c) 2026 Bombay-Boyz
+homepage:           https://github.com/Bombay-Boyz/jsonlogic-hs
+bug-reports:        https://github.com/Bombay-Boyz/jsonlogic-hs/issues
+build-type:         Simple
+tested-with:        GHC ==9.14.1
+extra-doc-files:    CHANGELOG.md
+                    README.md
+extra-source-files: test/tests.json
+                    differential/README.md
+                    differential/oracle.js
+                    differential/package.json
 
--- Standard 5.1: mandatory warning flags, shared so the library and the
--- test suite are held to the identical bar, not two different ones.
+-- Treat warnings as errors during development and CI, but not in released
+-- builds: new GHC versions add warnings that would otherwise break
+-- downstream installs (`cabal check` rejects an unconditional -Werror).
+-- Enabled for our own builds through cabal.project.
+flag werror
+  description: Treat warnings as errors (enable in dev/CI, off for releases).
+  default:     False
+  manual:      True
+
+-- The differential test needs Node.js to run, so it is a development tool:
+-- off by default so that installing the package never builds it.
+flag differential
+  description: Build the differential-test executable (needs Node.js to run).
+  default:     False
+  manual:      True
+
+-- Standard 5.1: the warning flags, shared so every component is held to the
+-- same bar.
 common warnings
-    ghc-options: -Wall
-                 -Wcompat
-                 -Widentities
-                 -Wincomplete-record-updates
-                 -Wincomplete-uni-patterns
-                 -Wmissing-export-lists
-                 -Wpartial-fields
-                 -Wredundant-constraints
-                 -Werror
+  default-language: Haskell2010
+  ghc-options:      -Wall
+                    -Wcompat
+                    -Widentities
+                    -Wincomplete-record-updates
+                    -Wincomplete-uni-patterns
+                    -Wmissing-export-lists
+                    -Wpartial-fields
+                    -Wredundant-constraints
+  if flag(werror)
+    ghc-options:    -Werror
 
+-- The supported API is the JsonLogic module. JsonLogic.Core.* is exposed for
+-- advanced use and for the test suites, and may change before 1.0.
 library
-    import:           warnings
-    hs-source-dirs:   src
-    exposed-modules:  JsonLogic.Core.Rule
-                      JsonLogic.Core.Errors
-                      JsonLogic.Core.Parse
-                      JsonLogic.Core.Value
-                      JsonLogic.Core.Eval
-                      JsonLogic
-    -- Deliberately minimal — other-modules grow through Phases 1-6 as
-    -- they're actually needed (Standard 2.11: no speculative modules
-    -- ahead of need).
-    build-depends:    base              >=4.14 && <5
-                    , aeson
-                    , recursion-schemes
-                    , deriving-compat
-                    , text
-                    , scientific
-                    , data-fix
-    default-language: Haskell2010
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  JsonLogic
+                    JsonLogic.Core.Errors
+                    JsonLogic.Core.Eval
+                    JsonLogic.Core.Parse
+                    JsonLogic.Core.Rule
+                    JsonLogic.Core.Value
+  build-depends:    base                 >=4.18 && <4.23
+                  , aeson                >=2.1 && <2.4
+                  , data-fix             >=0.3 && <0.4
+                  , deriving-compat      >=0.6 && <0.7
+                  , recursion-schemes    >=5.2 && <5.3
+                  , scientific           >=0.3 && <0.4
+                  , text                 >=2.0 && <2.3
 
 test-suite jsonlogic-hs-test
-    import:           warnings
-    type:             exitcode-stdio-1.0
-    hs-source-dirs:   test
-    main-is:          Spec.hs
-    other-modules:    ParseSpec
-                      ValueSpec
-                      EvalSpec
-    build-depends:    base
-                    , jsonlogic-hs
-                    , hspec
-                    , QuickCheck
-                    , bytestring
-                    , aeson
-                    , data-fix
-                    , text
-    default-language: Haskell2010
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Spec.hs
+  other-modules:    EvalSpec
+                    ParseSpec
+                    ValueSpec
+  build-depends:    base                 >=4.18 && <4.23
+                  , aeson                >=2.1 && <2.4
+                  , bytestring           >=0.11 && <0.13
+                  , data-fix             >=0.3 && <0.4
+                  , hspec                >=2.11 && <2.12
+                  , QuickCheck           >=2.19 && <2.20
+                  , text                 >=2.0 && <2.3
+                  , jsonlogic-hs
 
--- Runs the classic JsonLogic suite (test/tests.json) and reports a pass
--- count. Run it with:
+-- Runs the classic JsonLogic suite (test/tests.json) and fails if any case
+-- does not pass. Run it with:
 --   cabal test jsonlogic-hs-conformance --test-show-details=direct
 test-suite jsonlogic-hs-conformance
-    import:           warnings
-    type:             exitcode-stdio-1.0
-    hs-source-dirs:   conformance
-    main-is:          Conformance.hs
-    build-depends:    base
-                    , jsonlogic-hs
-                    , aeson
-                    , bytestring
-                    , directory
-    default-language: Haskell2010
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   conformance
+  main-is:          Conformance.hs
+  build-depends:    base                 >=4.18 && <4.23
+                  , aeson                >=2.1 && <2.4
+                  , bytestring           >=0.11 && <0.13
+                  , directory            >=1.3 && <1.4
+                  , jsonlogic-hs
 
 -- Differential test against the real JavaScript implementation. Needs
--- Node.js, so it is an executable, not part of `cabal test`. See
--- differential/README.md.
+-- Node.js, so it is a flag-gated executable and not part of `cabal test`.
+-- See differential/README.md.
 executable jsonlogic-hs-differential
-    import:           warnings
-    hs-source-dirs:   differential
-    main-is:          Differential.hs
-    build-depends:    base
-                    , jsonlogic-hs
-                    , aeson
-                    , bytestring
-                    , directory
-                    , process
-                    , QuickCheck
-                    , text
-    default-language: Haskell2010
+  import:           warnings
+  if !flag(differential)
+    buildable:      False
+  hs-source-dirs:   differential
+  main-is:          Differential.hs
+  build-depends:    base                 >=4.18 && <4.23
+                  , aeson                >=2.1 && <2.4
+                  , bytestring           >=0.11 && <0.13
+                  , directory            >=1.3 && <1.4
+                  , process              >=1.6 && <1.7
+                  , QuickCheck           >=2.19 && <2.20
+                  , text                 >=2.0 && <2.3
+                  , jsonlogic-hs
+
+source-repository head
+  type:     git
+  location: https://github.com/Bombay-Boyz/jsonlogic-hs.git

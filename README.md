@@ -5,11 +5,9 @@ small, closed rule language that is itself JSON, so rules can be stored,
 shared between systems, and evaluated against data without running
 arbitrary code.
 
-Author: Sabrinathan Nair
+Author: Sabrinathan Nair. Licence: [MPL-2.0](LICENSE).
 
-**Status: pre-release, not yet on Hackage.** It passes all 278 cases of the
-classic shared test suite ([jsonlogic.com/tests.json](https://jsonlogic.com/tests.json)),
-plus its own unit and property tests.
+**Status: pre-release, not yet on Hackage.**
 
 ## Usage
 
@@ -67,8 +65,32 @@ silent `null`.
   (`"1" == 1`, `[] == 0`, `"10" < "9"`) is JavaScript's. That table is
   written out plainly in `JsonLogic.Core.Value` rather than abstracted.
 
+The supported API is the `JsonLogic` module. `JsonLogic.Core.*` is exposed
+for advanced use and may change before 1.0.
+
 Design and decisions: [`VISION.md`](VISION.md). Engineering rules this
 codebase follows: [`ENGINEERING_STANDARD.md`](ENGINEERING_STANDARD.md).
+
+## How it is tested
+
+- **The classic suite.** All 278 cases of the shared JsonLogic test suite
+  ([jsonlogic.com/tests.json](https://jsonlogic.com/tests.json)) must pass;
+  it fails the build otherwise.
+- **Unit and property tests**, including laws such as De Morgan's, and a
+  check that every number written out reads back as the same double.
+- **A differential test against the real thing.** It generates random rules
+  over every builtin operator, feeds them awkward values (`"0x10"`,
+  `" 12 "`, `null`, empty strings), and runs each through this library and
+  through [json-logic-js](https://github.com/jwadhams/json-logic-js) 2.0.5
+  via Node. 100,000 random cases from a fresh seed agree, and CI re-runs
+  5,000 on every push. Building it found and fixed three real differences:
+  JavaScript's `undefined` is not `null`; an optional operand that evaluates
+  to `undefined` counts as absent; and numbers above 2^53 print with
+  different digits unless the halfway-point rule is followed.
+
+What this does not show: the generator uses only argument counts this
+library accepts, only ASCII, and only builtin operators, so it does not
+exercise the deliberate differences below.
 
 ## Deliberate differences from the reference
 
@@ -95,3 +117,12 @@ cabal test
 `cabal test` runs the unit and property tests and the conformance suite
 (`test/tests.json`, a copy of the shared suite; check its licence before
 redistributing).
+
+The repository's `cabal.project` turns on two flags that the released package
+does not: `werror` (warnings are errors) and `differential` (builds the
+differential-test executable, which needs Node.js; see
+[`differential/README.md`](differential/README.md)).
+
+## Licence
+
+Mozilla Public License 2.0. See [`LICENSE`](LICENSE).

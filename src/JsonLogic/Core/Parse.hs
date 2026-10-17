@@ -51,7 +51,7 @@ parseRule = parseRuleWithDepth defaultMaxDepth
 parseRuleWithDepth :: Int -> Value -> Either ParseError Rule
 parseRuleWithDepth limit value = anaM (step limit) (0, value)
 
--- | Monadic anamorphism: unfold a seed into a 'Fix', stopping at the
+-- | Monadic anamorphism: unfold a seed into a @Fix@, stopping at the
 -- first failure. Defined locally because the library version could not
 -- be confirmed available; swap for it if it exists (Standard 4.7).
 anaM :: (Monad m, Traversable f) => (a -> m (f a)) -> a -> m (Fix f)

@@ -1,2 +1,7 @@
 packages: .
 tests: True
+
+-- Our own builds treat warnings as errors and build the differential tool.
+-- Released builds (the package defaults) do neither.
+package jsonlogic-hs
+  flags: +werror +differential
