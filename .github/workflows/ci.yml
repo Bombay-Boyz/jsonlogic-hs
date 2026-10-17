@@ -25,7 +25,8 @@ jobs:
       # remove warnings, and that must not fail the build there.
       - name: Relax -Werror off the primary GHC
         if: matrix.ghc != '9.14.1'
-        run: printf 'package jsonlogic-hs\n  flags: -werror +differential\n' > cabal.project.local
+        run: |
+           printf 'package jsonlogic-hs\n  flags: -werror +differential\n' > cabal.project.local
 
       - uses: actions/cache@v4
         with:
