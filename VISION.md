@@ -449,6 +449,35 @@ be revisited deliberately rather than rediscovered.
   (`[{"var":[]}, 1, 1]`). This is the one place the strict-arity rule
   (§11, wrong argument counts are parse errors) yields to the reference.
 
+### Revision 2026-10-19 (hardening). Supersedes the entries above where they differ.
+
+- **Strict arity is the default, lenient is a mode.** `Config.arityMode`.
+  Lenient reproduces the reference exactly, including evaluating surplus
+  operands of ordinary operators and ignoring those of `if`, `and`, `or`,
+  `map`, `filter`, `reduce`, `all`, `some`, `none`. The repair happens in the
+  parser (`Discard` in `RuleF`), so evaluation is unchanged. A two-argument
+  `reduce` is accepted in lenient mode.
+- **Strings are UTF-16.** Length, indexing, `substr` and ordering are by code
+  unit, as in JavaScript (`JsonLogic.Core.Utf16`); only a slice through a
+  surrogate pair differs (U+FFFD). This replaces "code point" above.
+- **Whitespace is ECMAScript's**, listed explicitly (`isJsSpace`), not
+  `isSpace`. This replaces the "only the byte-order mark" note above.
+- **`missing` / `missing_some` follow the reference** for array keys and
+  option lists of any type (the one remaining difference is not running data
+  as rules, `DEV-REEVAL`). This replaces "treated as plain data" above.
+- **The evaluator carrier is `Val -> Run Val`**, where `Run` is a small
+  state-passing monad holding the step budget (still pure). This replaces
+  `Either EvalError` above and implements the resource limits.
+- **Resource limits** (depth, steps, string, array) are configurable and on
+  by default; building a result is charged in steps in proportion to its
+  size so total work is bounded (`docs/LIMITS.md`).
+- **Deviations live in `docs/COMPATIBILITY.md`**, each with an identifier and
+  the test that pins it; the README and this log point there.
+- **Outliers are first-class.** `differential/outliers.js` records the
+  reference's answers to a deterministic catalogue; `jsonlogic-hs-outliers`
+  replays them offline. The conformance runner is a gate and cannot pass by
+  running nothing.
+
 ## 12. Status log
 
 - **2026-10-13: phases 0 to 5 complete.** Scaffold, `RuleF`, depth-bounded
@@ -545,3 +574,10 @@ be revisited deliberately rather than rediscovered.
   generated. CI builds against GHC 9.6.7, 9.8.4, 9.10.3, 9.12.4 and 9.14.1,
   and `tested-with` lists only what that matrix has verified: currently just
   GHC 9.14.1, until the matrix has run.
+- **2026-10-19: hardening release candidate.** Outlier catalogue (about
+  26,000 committed cases, 138,000 full tier), differential harness with
+  shrinking and replay, lenient arity mode, resource limits, UTF-16
+  strings, signed zero, ECMAScript whitespace, missing/missing_some parity,
+  number-printing tie rule, linear-time numeric parsing, checked custom
+  operator registries, API facade (`compile`, `run`, `Config`), and CI with
+  SHA-pinned actions. See CHANGELOG.md and docs/COMPATIBILITY.md.

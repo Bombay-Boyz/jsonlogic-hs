@@ -7,22 +7,28 @@
 -- the seed is a JSON value plus how deep we already are, and each step
 -- produces one layer of 'RuleF' whose children are further seeds.
 --
--- Reading follows the reference implementation's own notion of "is this
--- a rule": an object with exactly one key is an operator call; an array
+-- Reading follows the reference implementation's own notion of \"is this
+-- a rule\": an object with exactly one key is an operator call; an array
 -- is a node whose elements are each read as rules; anything else
 -- (including an object with zero or several keys) is a literal.
 --
--- __Deliberate deviation (recorded in VISION.md §11):__ the reference
--- implementation silently ignores extra arguments and pads missing ones.
--- Here a wrong argument count is a 'ParseError', because 'RuleF' makes
--- those shapes unrepresentable (Standard 1.2).
+-- __Arity.__ The reference implementation silently ignores extra arguments
+-- and pads missing ones. In 'Strict' mode (the default) a wrong argument
+-- count is a 'ParseError', because 'RuleF' makes those shapes
+-- unrepresentable (Standard 1.2). In 'Lenient' mode the count is repaired
+-- here, at parse time, exactly as the reference would behave: missing
+-- arguments become JavaScript @undefined@ (an empty @and@), and surplus
+-- ones are dropped, after being evaluated for their errors when the
+-- reference evaluates them ('Discard').
 module JsonLogic.Core.Parse
   ( parseRule
   , parseRuleWithDepth
+  , parseRuleWith
   , defaultMaxDepth
+  , builtinOperatorNames
   ) where
 
-import Data.Aeson (Value (..))
+import Data.Aeson (Value (..), toJSON)
 import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as KeyMap
 import Data.Fix (Fix (..))
@@ -31,25 +37,31 @@ import Data.List.NonEmpty (NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Text (Text)
 
+import JsonLogic.Core.Config (ArityMode (..), Config (..), defaultConfig)
 import JsonLogic.Core.Errors (Arity (..), ParseError (..))
 import JsonLogic.Core.Rule (OperatorName (..), Rule, RuleF (..))
+import JsonLogic.Core.Value (nestsDeeperThan)
 
 -- | The unfold's seed: nesting depth so far, and the JSON still to read.
 type Seed = (Int, Value)
 
--- | Nesting limit used by 'parseRule'. A hostile, deeply nested rule is
--- rejected here rather than exhausting the stack later.
+-- | Nesting limit used by 'parseRule'.
 defaultMaxDepth :: Int
-defaultMaxDepth = 64
+defaultMaxDepth = maxDepth defaultConfig
 
--- | Read a rule using 'defaultMaxDepth'.
+-- | Read a rule using 'defaultConfig'.
 parseRule :: Value -> Either ParseError Rule
-parseRule = parseRuleWithDepth defaultMaxDepth
+parseRule = parseRuleWith defaultConfig
 
--- | Read a rule, rejecting any nesting deeper than the given limit.
--- Nesting of exactly @limit@ levels is accepted; one more is not.
+-- | Read a rule in strict mode, rejecting any nesting deeper than the
+-- given limit. Nesting of exactly @limit@ levels is accepted; one more is
+-- not.
 parseRuleWithDepth :: Int -> Value -> Either ParseError Rule
-parseRuleWithDepth limit value = anaM (step limit) (0, value)
+parseRuleWithDepth limit = parseRuleWith defaultConfig{maxDepth = limit}
+
+-- | Read a rule with the given depth limit and arity mode.
+parseRuleWith :: Config -> Value -> Either ParseError Rule
+parseRuleWith config value = anaM (step (maxDepth config) (arityMode config)) (0, value)
 
 -- | Monadic anamorphism: unfold a seed into a @Fix@, stopping at the
 -- first failure. Defined locally because the library version could not
@@ -60,16 +72,22 @@ anaM coalgebra = go
     go seed = coalgebra seed >>= fmap Fix . traverse go
 
 -- | One layer of the unfold.
-step :: Int -> Seed -> Either ParseError (RuleF Seed)
-step limit (depth, value)
+step :: Int -> ArityMode -> Seed -> Either ParseError (RuleF Seed)
+step limit mode (depth, value)
   | depth > limit = Left (DepthExceeded limit)
   | otherwise = case value of
       Array items -> Right (Arr (map (deeper depth) (toList items)))
       Object fields -> case KeyMap.toList fields of
-        [(key, args)] ->
-          operator (Key.toText key) (map (deeper depth) (arguments args))
-        _ -> Right (Lit value)
-      _ -> Right (Lit value)
+        [(key, args)] -> operator mode depth (Key.toText key) (arguments args)
+        _ -> literal limit depth value
+      _ -> literal limit depth value
+
+-- | A literal's own nesting counts towards the depth limit, so a deeply
+-- nested object cannot be smuggled past it inside a rule.
+literal :: Int -> Int -> Value -> Either ParseError (RuleF Seed)
+literal limit depth value
+  | nestsDeeperThan (limit - depth) value = Left (DepthExceeded limit)
+  | otherwise = Right (Lit value)
 
 deeper :: Int -> Value -> Seed
 deeper depth value = (depth + 1, value)
@@ -80,18 +98,125 @@ arguments :: Value -> [Value]
 arguments (Array items) = toList items
 arguments other = [other]
 
--- | The classic suite requires @{"var": []}@ to mean the data itself, like
--- @{"var": null}@ and @{"var": ""}@, so an empty argument list is read as
--- a single null path rather than rejected for its arity.
-varOperands :: [Seed] -> [Seed]
-varOperands [] = [(0, Null)]
-varOperands args = args
+-- | The reference's JavaScript @undefined@, as a rule: an empty @and@.
+undefinedRule :: Value
+undefinedRule = Object (KeyMap.singleton "and" (toJSON ([] :: [Value])))
+
+-- | How an operator with a bounded argument count treats it: the fewest and
+-- most it takes, and whether the reference evaluates surplus operands
+-- (@True@) or never looks at them (@False@: @map@, @reduce@ and the other
+-- operators the reference evaluates lazily). Operators that take any
+-- number of arguments have no shape.
+data Shape = Fixed Int Int Bool
+
+shapeOf :: Text -> Maybe Shape
+shapeOf name = case name of
+  "var" -> Just (Fixed 0 2 True)
+  "missing_some" -> Just (Fixed 2 2 True)
+  "!" -> Just (Fixed 1 1 True)
+  "!!" -> Just (Fixed 1 1 True)
+  "==" -> Just (Fixed 2 2 True)
+  "===" -> Just (Fixed 2 2 True)
+  "!=" -> Just (Fixed 2 2 True)
+  "!==" -> Just (Fixed 2 2 True)
+  "<" -> Just (Fixed 2 3 True)
+  "<=" -> Just (Fixed 2 3 True)
+  ">" -> Just (Fixed 2 2 True)
+  ">=" -> Just (Fixed 2 2 True)
+  "-" -> Just (Fixed 1 2 True)
+  "/" -> Just (Fixed 2 2 True)
+  "%" -> Just (Fixed 2 2 True)
+  "map" -> Just (Fixed 2 2 False)
+  "filter" -> Just (Fixed 2 2 False)
+  "reduce" -> Just (Fixed 3 3 False)
+  "all" -> Just (Fixed 2 2 False)
+  "none" -> Just (Fixed 2 2 False)
+  "some" -> Just (Fixed 2 2 False)
+  "in" -> Just (Fixed 2 2 True)
+  "substr" -> Just (Fixed 2 3 True)
+  "log" -> Just (Fixed 1 1 True)
+  _ -> Nothing
+
+-- | The names the parser maps to builtin operators. A custom operator may
+-- not use one of these names, because the builtin would shadow it.
+builtinOperatorNames :: [Text]
+builtinOperatorNames =
+  [ "var"
+  , "missing"
+  , "missing_some"
+  , "if"
+  , "?:"
+  , "and"
+  , "or"
+  , "!"
+  , "!!"
+  , "=="
+  , "==="
+  , "!="
+  , "!=="
+  , "<"
+  , "<="
+  , ">"
+  , ">="
+  , "max"
+  , "min"
+  , "+"
+  , "-"
+  , "*"
+  , "/"
+  , "%"
+  , "map"
+  , "filter"
+  , "reduce"
+  , "all"
+  , "none"
+  , "some"
+  , "merge"
+  , "in"
+  , "cat"
+  , "substr"
+  , "log"
+  ]
+
+-- | Repair an argument list to an operator's arity, in lenient mode.
+-- Returns the list the operator can be built from, plus the surplus
+-- operands that are still to be evaluated.
+repair :: Text -> [Value] -> ([Value], [Value])
+repair name args = case shapeOf name of
+  Just (Fixed low high evaluated)
+    | length args < low && name /= "var" -> (args ++ padding name (length args) low, [])
+    | length args > high -> (take high args, if evaluated then drop high args else [])
+  _ -> (args, [])
+
+-- | What stands in for a missing operand: @undefined@, except for the
+-- initial value of @reduce@, which the reference defaults to @null@.
+padding :: Text -> Int -> Int -> [Value]
+padding name have want =
+  [ if name == "reduce" && i == 2 then Null else undefinedRule
+  | i <- [have .. want - 1]
+  ]
 
 -- | The operator table. Names outside the closed builtin set become
 -- 'CustomOp', whose behaviour is supplied by the caller at evaluation.
-operator :: Text -> [Seed] -> Either ParseError (RuleF Seed)
-operator name args = case name of
-  "var" -> oneOrTwo op Var (varOperands args)
+operator :: ArityMode -> Int -> Text -> [Value] -> Either ParseError (RuleF Seed)
+operator mode depth name args = case mode of
+  Strict -> build (map (deeper depth) args)
+  Lenient -> case repair name args of
+    (fixed, []) -> build (map (deeper depth) fixed)
+    (fixed, extras) ->
+      -- The repaired call is read again as an ordinary one, at the same
+      -- depth: it has the right number of operands, so it cannot loop.
+      Right
+        ( Discard
+            (depth, Object (KeyMap.singleton (Key.fromText name) (toJSON fixed)))
+            (map (deeper depth) extras)
+        )
+  where
+    build = operatorFrom name depth
+
+operatorFrom :: Text -> Int -> [Seed] -> Either ParseError (RuleF Seed)
+operatorFrom name depth args = case name of
+  "var" -> oneOrTwo op Var (varOperands depth args)
   "missing" -> anyNumber Missing args
   "missing_some" -> exactlyTwo op MissingSome args
   "if" -> anyNumber If args
@@ -129,6 +254,13 @@ operator name args = case name of
   _ -> Right (CustomOp op args)
   where
     op = OperatorName name
+
+-- | The classic suite requires @{\"var\": []}@ to mean the data itself, like
+-- @{\"var\": null}@ and @{\"var\": \"\"}@, so an empty argument list is read as
+-- a single null path rather than rejected for its arity.
+varOperands :: Int -> [Seed] -> [Seed]
+varOperands depth [] = [(depth + 1, Null)]
+varOperands _ args = args
 
 exactlyOne :: OperatorName -> (a -> RuleF a) -> [a] -> Either ParseError (RuleF a)
 exactlyOne _ build [x] = Right (build x)

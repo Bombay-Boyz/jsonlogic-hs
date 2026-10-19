@@ -7,7 +7,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 bash scripts/fetch-tools.sh
 
-FILES=$(find src test conformance differential -name '*.hs' -not -path '*/node_modules/*' | sort)
+FILES=$(find src test conformance differential outliers bench -name '*.hs' -not -path '*/node_modules/*' | sort)
 HLINT=".tools/hlint-3.10/hlint"
 
 if [ "${1:-}" = "--fix" ]; then

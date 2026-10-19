@@ -10,33 +10,49 @@
 -- operator, fed deliberately awkward values (@"0x10"@, @" 12 "@, @"1e3"@,
 -- @null@, empty strings), and compares the two answers.
 --
--- Usage: @cabal run jsonlogic-hs-differential -- [COUNT] [SEED]@
+-- Usage:
 --
--- Rules are generated with argument counts this library accepts, so a
--- disagreement is a real behavioural difference, not the documented
--- strict-arity deviation (VISION.md §11). Equality between two values that
--- are arrays or objects is avoided for the same reason: the reference
--- compares them by reference identity, which parsed JSON does not have.
+-- > cabal run jsonlogic-hs-differential -- COUNT SEED
+-- > cabal run jsonlogic-hs-differential -- --replay FILE
+--
+-- The seed is always printed first, so any run can be repeated. A failing
+-- case is shrunk against the reference to a smaller rule that still
+-- disagrees, and written to a file that @--replay@ re-checks.
+--
+-- Cases are compared in lenient arity mode, which is the mode that models
+-- the reference (docs/COMPATIBILITY.md); in strict mode the library must
+-- give the same answer unless it rejects the arity. Equality between two
+-- values that are arrays or objects is avoided in generated rules: the
+-- reference compares them by reference identity, which parsed JSON does
+-- not have.
+--
+-- An error is compared with an error only when both are of the same
+-- class (unknown operator, invalid operand, empty @*@). A reference error
+-- of any other kind fails the run, so a new kind of failure is noticed
+-- rather than silently accepted.
 module Main (main) where
 
-import Control.Monad (unless)
+import Control.Monad (unless, when, (>=>))
 import Data.Aeson (Value (..), decode, encode, object, toJSON, (.=))
 import Data.Aeson.Key (Key)
 import qualified Data.Aeson.KeyMap as KeyMap
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.ByteString.Lazy.Char8 as Char8
-import Data.Maybe (catMaybes)
+import Data.List (isInfixOf)
+import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Scientific (Scientific)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import System.Directory (createDirectoryIfMissing)
 import System.Environment (getArgs)
 import System.Exit (exitFailure)
+import System.IO (hSetEncoding, stderr, stdout, utf8)
 import System.Process (callProcess)
 import Test.QuickCheck (Gen, choose, elements, frequency, vectorOf)
 import Test.QuickCheck.Gen (unGen)
 import Test.QuickCheck.Random (mkQCGen)
 
-import JsonLogic (Error, apply)
+import JsonLogic
 
 -- ---------------------------------------------------------------------
 -- Generators
@@ -73,6 +89,54 @@ trickyStrings =
   , "1,2"
   , "[object Object]"
   , "a.b"
+  , "\x00a0\&7"
+  , "\xfeff\&3"
+  , "\x2028 4 \x2029"
+  , "\x0085\&5"
+  , "\x200b\&6"
+  , "0x1F"
+  , "0b101"
+  , "1e1000"
+  , "\x1F600"
+  , "a\x1F600\&b"
+  , "\xE000"
+  , "e\x0301"
+  , "\x65E5\x672C"
+  , "9007199254740993"
+  ]
+
+-- | Characters either side of the UTF-16 surrogate range, where ordering
+-- by code unit and by code point part ways.
+unicodeEdges :: [Text]
+unicodeEdges = ["\x1F600", "\xE000", "\xFFFF", "\x10000", "\xD7FF", "a", "", "\x1F600\&a", "\x10FFFF"]
+
+-- | Each ECMAScript whitespace character, and some that look like it,
+-- followed by a digit.
+whitespaceEdges :: [Text]
+whitespaceEdges =
+  [ Text.pack [c, '5']
+  | c <-
+      [ '\t'
+      , '\n'
+      , '\v'
+      , '\f'
+      , '\r'
+      , ' '
+      , '\xA0'
+      , '\x1680'
+      , '\x2000'
+      , '\x2005'
+      , '\x200A'
+      , '\x2028'
+      , '\x2029'
+      , '\x202F'
+      , '\x205F'
+      , '\x3000'
+      , '\xFEFF'
+      , '\x85'
+      , '\x180E'
+      , '\x200B'
+      ]
   ]
 
 scalarPaths :: [Text]
@@ -88,10 +152,19 @@ genScalar =
     , (4, toJSON <$> (choose (-6, 12) :: Gen Int))
     , (2, toJSON <$> elements decimals)
     , (5, String <$> elements trickyStrings)
+    , (1, elements extremes)
     ]
   where
     decimals :: [Double]
     decimals = [0.5, 1.5, -2.25, 100, 1e-7, 1e21]
+    extremes =
+      [ Number 5e-324
+      , Number 1.7976931348623157e308
+      , Number 2.2250738585072014e-308
+      , Number 9007199254740993
+      , Number 1e309
+      , Number 123456789012345678901234567890
+      ]
 
 genArrayOf :: Gen Value -> Gen Value
 genArrayOf element = do
@@ -126,7 +199,19 @@ genVar ctx = do
     else pure (call "var" [path])
 
 genLeaf :: Ctx -> Gen Value
-genLeaf ctx = frequency [(4, genScalar), (4, genVar ctx), (1, genArrayOf genScalar)]
+genLeaf ctx = frequency [(4, genScalar), (4, genVar ctx), (1, genArrayOf genScalar), (1, elements computed)]
+
+-- | Values JSON cannot write (-0, NaN, the infinities, undefined), produced
+-- by a rule instead. They belong in rules only: put in the data they would
+-- be objects, which the reference compares by identity.
+computed :: [Value]
+computed =
+  [ object ["*" .= [toJSON (-1 :: Int), toJSON (0 :: Int)]]
+  , object ["+" .= [String "a"]]
+  , object ["/" .= [toJSON (1 :: Int), toJSON (0 :: Int)]]
+  , object ["/" .= [toJSON (-1 :: Int), toJSON (0 :: Int)]]
+  , object ["and" .= ([] :: [Int])]
+  ]
 
 genRule :: Ctx -> Int -> Gen Value
 genRule ctx depth
@@ -144,6 +229,7 @@ genRule ctx depth
         , (1, genMissing)
         , (2, genIf ctx depth)
         , (1, genArrayRule ctx depth)
+        , (2, genStringFocus)
         ]
 
 -- | Between @low@ and @high@ sub-rules.
@@ -151,6 +237,19 @@ genArgs :: Ctx -> Int -> Int -> Int -> Gen [Value]
 genArgs ctx depth low high = do
   n <- choose (low, high)
   vectorOf n (genRule ctx (depth - 1))
+
+-- | Operators applied straight to awkward strings, which is where
+-- JavaScript's coercion and ordering rules bite hardest.
+genStringFocus :: Gen Value
+genStringFocus = do
+  pool <- elements [trickyStrings, unicodeEdges, whitespaceEdges]
+  a <- String <$> elements pool
+  b <- String <$> elements pool
+  frequency
+    [ (3, (\op -> call op [a, b]) <$> elements ["<", "<=", ">", ">=", "==", "!=", "===", "in", "cat", "max", "min"])
+    , (2, (\op -> call op [a]) <$> elements ["+", "-", "!", "!!", "max", "min", "*"])
+    , (2, (\op -> call op [a, toJSON (1 :: Int)]) <$> elements ["+", "*", "/", "%", "-", "<", "=="])
+    ]
 
 genLogic :: Ctx -> Int -> Gen Value
 genLogic ctx depth =
@@ -313,8 +412,6 @@ genCase = do
 -- | What the reference answered.
 data Reference = ReferenceValue Value | ReferenceError Text
 
-data Mismatch = Mismatch Int Value Value String String
-
 reference :: Value -> Reference
 reference (Object fields) =
   case (KeyMap.lookup "ok" fields, KeyMap.lookup "error" fields) of
@@ -323,10 +420,43 @@ reference (Object fields) =
     _ -> ReferenceError "malformed oracle line"
 reference _ = ReferenceError "malformed oracle line"
 
-agree :: Either Error Value -> Reference -> Bool
-agree (Right ours) (ReferenceValue theirs) = ours == theirs
-agree (Left _) (ReferenceError _) = True
-agree _ _ = False
+-- | The library's answer in both arity modes.
+data Ours = Ours
+  { lenientAnswer :: Either Error Value
+  , strictAnswer :: Either Error Value
+  }
+
+answers :: (Value, Value) -> Ours
+answers (rule, input) =
+  Ours
+    (applyWithConfig defaultConfig{arityMode = Lenient} noOperators rule input)
+    (applyWithConfig defaultConfig noOperators rule input)
+
+-- | Why the answers disagree, if they do.
+judge :: Reference -> Ours -> Maybe String
+judge expected ours = case (judgeOne expected (lenientAnswer ours), strictAnswer ours) of
+  (Just why, _) -> Just ("lenient: " ++ why)
+  (Nothing, Left (ParseFailure (ArityMismatch{}))) -> Nothing
+  (Nothing, strictResult) -> ("strict: " ++) <$> judgeOne expected strictResult
+
+judgeOne :: Reference -> Either Error Value -> Maybe String
+judgeOne (ReferenceValue theirs) (Right ours)
+  | ours == theirs = Nothing
+  | otherwise = Just "different value"
+judgeOne (ReferenceValue _) (Left e) = Just ("the library failed: " ++ Text.unpack (renderError e))
+judgeOne (ReferenceError _) (Right _) = Just "the reference throws but the library answered"
+judgeOne (ReferenceError message) (Left e) = case errorClass e of
+  Just wanted
+    | any (`isInfixOf` Text.unpack message) wanted -> Nothing
+    | otherwise -> Just ("error of a different class: " ++ Text.unpack (renderError e))
+  Nothing -> Just ("the library failed in a way the reference does not: " ++ Text.unpack (renderError e))
+
+-- | The messages the reference gives for each class of library error.
+errorClass :: Error -> Maybe [String]
+errorClass (EvalFailure (UnknownOperator _)) = Just ["Unrecognized operation", "apply is not a function"]
+errorClass (EvalFailure (InvalidOperand _)) = Just ["Cannot read properties"]
+errorClass (ParseFailure (ArityMismatch (OperatorName "*") _ 0)) = Just ["Reduce of empty array"]
+errorClass _ = Nothing
 
 json :: Value -> String
 json = Char8.unpack . encode
@@ -335,24 +465,91 @@ describe :: Reference -> String
 describe (ReferenceValue value) = json value
 describe (ReferenceError message) = "error: " ++ Text.unpack message
 
-compareCase :: Int -> (Value, Value) -> Maybe Value -> Maybe Mismatch
-compareCase index (rule, input) line =
-  case fmap reference line of
-    Nothing -> Just (Mismatch index rule input "" "reference line missing or unreadable")
-    Just expected
-      | agree ours expected -> Nothing
-      | otherwise -> Just (Mismatch index rule input (either show json ours) (describe expected))
-  where
-    ours = apply rule input
+describeOurs :: Either Error Value -> String
+describeOurs = either (\e -> "error: " ++ Text.unpack (renderError e)) json
 
-render :: Mismatch -> [String]
-render (Mismatch index rule input ours theirs) =
-  [ "MISMATCH #" ++ show index
-  , "  rule      " ++ json rule
-  , "  data      " ++ json input
-  , "  ours      " ++ ours
-  , "  reference " ++ theirs
-  ]
+-- ---------------------------------------------------------------------
+-- Asking the reference, and shrinking
+-- ---------------------------------------------------------------------
+
+-- | Ask the reference about a batch of cases with one Node process.
+askReference :: FilePath -> [(Value, Value)] -> IO [Reference]
+askReference stem cases = do
+  let casesFile = stem ++ ".cases.jsonl"
+      referenceFile = stem ++ ".reference.jsonl"
+  LBS.writeFile
+    casesFile
+    (Char8.unlines [encode (object ["rule" .= rule, "data" .= input]) | (rule, input) <- cases])
+  callProcess "node" ["differential/oracle.js", casesFile, referenceFile]
+  answered <- Char8.lines <$> LBS.readFile referenceFile
+  unless (length answered == length cases) $ do
+    putStrLn
+      ( "differential: the reference gave "
+          ++ show (length answered)
+          ++ " answers for "
+          ++ show (length cases)
+          ++ " cases"
+      )
+    exitFailure
+  pure (map (maybe (ReferenceError "malformed oracle line") reference . decode) answered)
+
+-- | Simpler variants of a case: a rule replaced by one of its operands, an
+-- operand dropped, a literal made simpler, the data emptied.
+shrinks :: (Value, Value) -> [(Value, Value)]
+shrinks (rule, input) =
+  [(r, input) | r <- shrinkValue rule]
+    ++ [(rule, d) | d <- shrinkData input]
+
+shrinkData :: Value -> [Value]
+shrinkData Null = []
+shrinkData (Object fields) =
+  Null : [Object (KeyMap.delete k fields) | k <- KeyMap.keys fields]
+shrinkData _ = [Null]
+
+shrinkValue :: Value -> [Value]
+shrinkValue value = case value of
+  Object fields -> case KeyMap.toList fields of
+    [(key, args)] ->
+      let operands = case args of
+            Array items -> foldr (:) [] items
+            other -> [other]
+       in operands
+            ++ [object [key .= toJSON (dropAt i operands)] | i <- [0 .. length operands - 1]]
+            ++ [object [key .= toJSON (replaceAt i smaller operands)] | (i, o) <- zip [0 ..] operands, smaller <- shrinkValue o]
+    _ -> [Null]
+  Array items ->
+    let elems = foldr (:) [] items
+     in elems ++ [toJSON (dropAt i elems) | i <- [0 .. length elems - 1]]
+  String t | not (Text.null t) -> [String "", String (Text.take 1 t)]
+  Number n | n /= 0 -> [Number 0, Number 1] ++ [Number (n / 2) | isSmall n]
+  Bool True -> [Bool False]
+  Null -> []
+  _ -> [Null]
+  where
+    isSmall :: Scientific -> Bool
+    isSmall n = abs n < 1e15
+
+dropAt :: Int -> [a] -> [a]
+dropAt i xs = take i xs ++ drop (i + 1) xs
+
+replaceAt :: Int -> a -> [a] -> [a]
+replaceAt i x xs = take i xs ++ [x] ++ drop (i + 1) xs
+
+-- | Greedily replace a failing case by a simpler one that still fails.
+shrinkCase :: FilePath -> (Value, Value) -> IO (Value, Value)
+shrinkCase stem = go (60 :: Int)
+  where
+    go 0 current = pure current
+    go fuel current = do
+      let candidates = take 400 (shrinks current)
+      if null candidates
+        then pure current
+        else do
+          expected <- askReference stem candidates
+          let failing = [c | (c, e) <- zip candidates expected, Just _ <- [judge e (answers c)]]
+          case failing of
+            [] -> pure current
+            c : _ -> go (fuel - 1) c
 
 -- ---------------------------------------------------------------------
 -- Running
@@ -363,45 +560,81 @@ readInt fallback text = case reads text of
   [(n, [])] -> n
   _ -> fallback
 
-parseArgs :: [String] -> (Int, Int)
-parseArgs [c, s] = (readInt 2000 c, readInt 1 s)
-parseArgs [c] = (readInt 2000 c, 1)
-parseArgs _ = (2000, 1)
+outDir :: FilePath
+outDir = "differential/out"
 
 main :: IO ()
 main = do
+  hSetEncoding stdout utf8
+  hSetEncoding stderr utf8
   args <- getArgs
-  let (count, seed) = parseArgs args
-      cases = [unGen genCase (mkQCGen (seed * 1000003 + i)) 30 | i <- [1 .. count]]
-      dir = "differential/out"
-      casesFile = dir ++ "/cases.jsonl"
-      referenceFile = dir ++ "/reference.jsonl"
-  createDirectoryIfMissing True dir
-  LBS.writeFile
-    casesFile
-    (Char8.unlines [encode (object ["rule" .= rule, "data" .= input]) | (rule, input) <- cases])
-  callProcess "node" ["differential/oracle.js", casesFile, referenceFile]
-  answered <- Char8.lines <$> LBS.readFile referenceFile
-  unless (length answered == count) $ do
-    putStrLn
-      ( "differential: the reference gave "
-          ++ show (length answered)
-          ++ " answers for "
-          ++ show count
-          ++ " cases"
-      )
-    exitFailure
-  let mismatches = catMaybes (zipWith3 compareCase [1 ..] cases (map decode answered))
-  mapM_ putStrLn (concatMap render (take 12 mismatches))
-  writeFile (dir ++ "/mismatches.txt") (unlines (concatMap render mismatches))
+  createDirectoryIfMissing True outDir
+  case args of
+    ["--replay", file] -> replay file
+    [c, s] -> randomRun (readInt 2000 c) (readInt 1 s)
+    [c] -> randomRun (readInt 2000 c) 1
+    _ -> randomRun 2000 1
+
+-- | Re-check the cases in a file, one @{"rule":..,"data":..}@ per line.
+replay :: FilePath -> IO ()
+replay file = do
+  contents <- Char8.lines <$> LBS.readFile file
+  let cases = mapMaybe (decode >=> toCase) contents
+  when (null cases) $ putStrLn ("differential: no cases in " ++ file) >> exitFailure
+  expected <- askReference (outDir ++ "/replay") cases
+  let bad = [(c, e, judge e (answers c)) | (c, e) <- zip cases expected]
+      failures = [(c, e, why) | (c, e, Just why) <- bad]
+  mapM_ (reportFailure Nothing) (zip [1 ..] failures)
+  putStrLn (show (length cases - length failures) ++ " of " ++ show (length cases) ++ " replayed cases agree")
+  unless (null failures) exitFailure
+  where
+    toCase (Object o) = (,) <$> KeyMap.lookup "rule" o <*> pure (fromMaybe Null (KeyMap.lookup "data" o))
+    toCase _ = Nothing
+
+randomRun :: Int -> Int -> IO ()
+randomRun count seed = do
+  putStrLn ("differential: seed " ++ show seed ++ ", " ++ show count ++ " cases")
+  let cases = [unGen genCase (mkQCGen (seed * 1000003 + i)) 30 | i <- [1 .. count]]
+  expected <- askReference (outDir ++ "/run") cases
+  let bad = [(i, c, e, why) | (i, c, e) <- zip3 [1 :: Int ..] cases expected, Just why <- [judge e (answers c)]]
   putStrLn
-    ( show (count - length mismatches)
+    ( show (count - length bad)
         ++ " of "
         ++ show count
         ++ " random cases agree with the reference (seed "
         ++ show seed
         ++ ")"
     )
-  unless (null mismatches) $ do
-    putStrLn ("every mismatch is in " ++ dir ++ "/mismatches.txt")
+  unless (null bad) $ do
+    -- shrink and report the first few; list every index
+    mapM_
+      ( \(i, c, _, _) -> do
+          small <- shrinkCase (outDir ++ "/shrink") c
+          [e] <- askReference (outDir ++ "/shrink1") [small]
+          let why = fromMaybe "no longer disagrees after shrinking" (judge e (answers small))
+          putStrLn ("  original  " ++ json (fst c) ++ "  on  " ++ json (snd c))
+          reportFailure (Just (seed, i)) (i, (small, e, why))
+      )
+      (take 5 [(i, c, e, w) | (i, c, e, w) <- bad])
+    writeFile
+      (outDir ++ "/mismatches.txt")
+      (unlines ["seed " ++ show seed ++ " index " ++ show i ++ ": " ++ why | (i, _, _, why) <- bad])
+    putStrLn (show (length bad) ++ " mismatches; indices are in " ++ outDir ++ "/mismatches.txt")
     exitFailure
+
+reportFailure :: Maybe (Int, Int) -> (Int, ((Value, Value), Reference, String)) -> IO ()
+reportFailure origin (n, ((rule, input), expected, why)) = do
+  let reproFile = outDir ++ "/repro-" ++ show n ++ ".jsonl"
+  LBS.writeFile reproFile (encode (object ["rule" .= rule, "data" .= input]) <> "\n")
+  let ours = answers (rule, input)
+  mapM_
+    putStrLn
+    [ "MISMATCH #" ++ show n ++ maybe "" (\(s, i) -> " (seed " ++ show s ++ ", case " ++ show i ++ ", shrunk)") origin
+    , "  why       " ++ why
+    , "  rule      " ++ json rule
+    , "  data      " ++ json input
+    , "  lenient   " ++ describeOurs (lenientAnswer ours)
+    , "  strict    " ++ describeOurs (strictAnswer ours)
+    , "  reference " ++ describe expected
+    , "  repeat    cabal run jsonlogic-hs-differential -- --replay " ++ reproFile
+    ]

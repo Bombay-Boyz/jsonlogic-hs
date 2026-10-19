@@ -1,0 +1,15 @@
+# Keeps the SHA-pinned actions current by proposing reviewable updates.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /differential
+    schedule:
+      interval: monthly
+    # json-logic-js is the oracle and is pinned on purpose: an upgrade is a
+    # decision, since it changes what "correct" means.
+    ignore:
+      - dependency-name: json-logic-js

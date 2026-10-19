@@ -11,6 +11,7 @@
 
 const fs = require("fs");
 const jsonLogic = require("json-logic-js");
+console.log = () => {}; // the "log" operator would otherwise write to stdout
 
 const [casesFile, resultsFile] = process.argv.slice(2);
 if (!casesFile || !resultsFile) {
@@ -18,13 +19,31 @@ if (!casesFile || !resultsFile) {
   process.exit(2);
 }
 
-let version = "unknown";
-try {
-  version = require("json-logic-js/package.json").version;
-} catch (ignored) {
-  // package.json may not be exported; the version is only for the log line
+// The reference is pinned. Anything else is not the oracle this library is
+// held to, so fail instead of comparing against it.
+const REQUIRED = "2.0.5";
+const version = require("json-logic-js/package.json").version;
+if (version !== REQUIRED) {
+  console.error("oracle: json-logic-js " + version + " is installed, but " + REQUIRED + " is required (run `npm ci` in differential/)");
+  process.exit(3);
 }
 console.error("oracle: json-logic-js " + version + ", node " + process.version);
+
+// Lone surrogates cannot be held in a Haskell Text (nor decoded by aeson), so
+// the reference's answer is normalised the way String.prototype.toWellFormed
+// would: each becomes U+FFFD. This is the one documented string deviation.
+function wellFormed(x) {
+  if (typeof x === "string") return typeof x.toWellFormed === "function" ? x.toWellFormed() : x;
+  if (Array.isArray(x)) return x.map(wellFormed);
+  if (x !== null && typeof x === "object") {
+    const o = {};
+    for (const k of Object.keys(x)) {
+      Object.defineProperty(o, wellFormed(k), { value: wellFormed(x[k]), enumerable: true, writable: true, configurable: true });
+    }
+    return o;
+  }
+  return x;
+}
 
 const answers = [];
 for (const line of fs.readFileSync(casesFile, "utf8").split("\n")) {
@@ -33,7 +52,7 @@ for (const line of fs.readFileSync(casesFile, "utf8").split("\n")) {
   let answer;
   try {
     const result = jsonLogic.apply(rule, data);
-    answer = { ok: result === undefined ? null : result };
+    answer = { ok: wellFormed(result === undefined ? null : result) };
   } catch (error) {
     answer = { error: String(error && error.message ? error.message : error) };
   }

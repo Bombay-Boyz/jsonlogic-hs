@@ -10,7 +10,7 @@ import qualified Data.Text as Text
 import Test.Hspec
 import Test.QuickCheck (Gen, choose, forAll, listOf, oneof)
 
-import JsonLogic
+import JsonLogic hiding (Rule)
 import JsonLogic.Core.Eval (evaluate)
 import JsonLogic.Core.Rule (Rule, RuleF (..))
 
@@ -160,7 +160,7 @@ nested :: Int -> Value
 nested n = foldr (\_ inner -> object ["!" .= inner]) (Number 0) [1 .. n]
 
 doubling :: Operators
-doubling = operatorsFromList [(OperatorName "double", implementation)]
+doubling = either (error . show) id (operatorsFromList [(OperatorName "double", implementation)])
   where
     implementation _ [Number n] = Right (Number (n * 2))
     implementation _ _ = Left "expected one number"

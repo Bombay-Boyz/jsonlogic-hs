@@ -4,19 +4,30 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+  schedule:
+    # nightly: the full outlier tier and a large differential run
+    - cron: "17 3 * * *"
+
+# Actions are pinned by commit SHA, not by a movable tag, so a compromised or
+# re-pointed tag cannot change what CI runs. The tag each SHA was resolved
+# from is in the comment; refresh deliberately (Dependabot is configured in
+# .github/dependabot.yml).
+permissions:
+  contents: read
 
 jobs:
   build:
-    name: build (GHC ${{ matrix.ghc }})
+    name: build and test (GHC ${{ matrix.ghc }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         ghc: ["9.6.7", "9.8.4", "9.10.3", "9.12.4", "9.14.1"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: haskell-actions/setup@v2
+      - uses: haskell-actions/setup@0f8e8c99d88aeb3fbfd523f1ef2c6f762d10d64d # v2
         with:
           ghc-version: ${{ matrix.ghc }}
           cabal-version: latest
@@ -26,9 +37,9 @@ jobs:
       - name: Relax -Werror off the primary GHC
         if: matrix.ghc != '9.14.1'
         run: |
-           printf 'package jsonlogic-hs\n  flags: -werror +differential\n' > cabal.project.local
+          printf 'package jsonlogic-hs\n  flags: -werror +differential +bench\n' > cabal.project.local
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.cabal/store
@@ -45,27 +56,70 @@ jobs:
         if: matrix.ghc == '9.14.1'
         run: cabal check
 
+      - name: source distribution builds and tests on its own
+        if: matrix.ghc == '9.14.1'
+        run: |
+          cabal sdist
+          dir=$(mktemp -d)
+          tar -xzf dist-newstyle/sdist/jsonlogic-hs-*.tar.gz -C "$dir"
+          cd "$dir"/jsonlogic-hs-*
+          cabal test all --test-show-details=direct
+
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - run: bash scripts/lint.sh
 
-  differential:
+  # The checkers are checked: the runners must fail on a missing, empty,
+  # truncated or tampered fixture, and the committed outlier fixture must be
+  # exactly what its generator writes.
+  harness:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: haskell-actions/setup@v2
+      - uses: haskell-actions/setup@0f8e8c99d88aeb3fbfd523f1ef2c6f762d10d64d # v2
         with:
           ghc-version: "9.14.1"
           cabal-version: latest
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "20"
+          node-version: "22"
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cabal/store
+            dist-newstyle
+          key: ${{ runner.os }}-ghc-9.14.1-harness-${{ hashFiles('**/*.cabal') }}
+          restore-keys: |
+            ${{ runner.os }}-ghc-9.14.1-harness-
+
+      - run: cd differential && npm ci --no-audit --no-fund
+      - run: cabal update
+      - run: bash scripts/check-harness.sh
+        env:
+          CI: "true"
+
+  # A fresh random seed on every run (the run number), printed first so a
+  # failure can be repeated; a failing case is shrunk and uploaded.
+  differential:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: haskell-actions/setup@0f8e8c99d88aeb3fbfd523f1ef2c6f762d10d64d # v2
+        with:
+          ghc-version: "9.14.1"
+          cabal-version: latest
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.cabal/store
@@ -74,6 +128,47 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-ghc-9.14.1-diff-
 
-      - run: cd differential && npm install --no-audit --no-fund
+      - run: cd differential && npm ci --no-audit --no-fund
       - run: cabal update
-      - run: cabal run jsonlogic-hs-differential -- 5000 1
+      - name: random differential run
+        run: cabal run jsonlogic-hs-differential -- ${{ github.event_name == 'schedule' && '200000' || '20000' }} ${{ github.run_number }}
+
+  # Nightly only: the whole outlier catalogue (about 138,000 cases), not the
+  # committed sample.
+  outliers-full:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: haskell-actions/setup@0f8e8c99d88aeb3fbfd523f1ef2c6f762d10d64d # v2
+        with:
+          ghc-version: "9.14.1"
+          cabal-version: latest
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - run: cd differential && npm ci --no-audit --no-fund
+      - run: cabal update
+      - name: generate the full tier
+        run: cd differential && OUTLIER_TIER=full node outliers.js "$RUNNER_TEMP/outliers-full.jsonl"
+      - name: replay it
+        run: cabal run jsonlogic-hs-outliers -- "$RUNNER_TEMP/outliers-full.jsonl"
+
+  # Nightly only: a short benchmark run, so a large slowdown shows up in the
+  # log (compare against the previous night's output by eye).
+  bench:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: haskell-actions/setup@0f8e8c99d88aeb3fbfd523f1ef2c6f762d10d64d # v2
+        with:
+          ghc-version: "9.14.1"
+          cabal-version: latest
+
+      - run: cabal update
+      - run: cabal run -O2 jsonlogic-hs-bench -- 5

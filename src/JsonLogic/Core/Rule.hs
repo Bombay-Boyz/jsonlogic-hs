@@ -162,6 +162,12 @@ data RuleF a
   | -- | Logs its evaluated argument for debugging and returns it
     -- unchanged.
     Log a
+  | -- | @Discard inner extras@: evaluate @inner@, then evaluate each of
+    -- @extras@ for its errors and ignore its value. Produced only in
+    -- lenient arity mode, for the operands an operator takes no use of:
+    -- the reference evaluates every operand of an ordinary operator before
+    -- applying it, so a surplus operand that fails still fails the rule.
+    Discard a [a]
   | -- | The deliberate open extension point (Standard 0.2, 0.5) — any
     -- operator name outside the closed set above. Evaluated by handing
     -- the name and evaluated arguments to the caller-supplied Handle;

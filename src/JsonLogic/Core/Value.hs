@@ -16,10 +16,12 @@
 -- @NaN@ and the infinities. They exist only during evaluation;
 -- 'toValue' turns them into JSON @null@, as @JSON.stringify@ does.
 --
--- Recorded deviations (VISION.md §11): arrays and objects are never
+-- Recorded deviations (docs/COMPATIBILITY.md): arrays and objects are never
 -- equal to one another under @==@ / @===@ (the reference compares by
--- reference identity, which JSON values do not have); strings are
--- ordered by code point, not UTF-16 code unit.
+-- reference identity, which JSON values do not have); a string slice that
+-- cuts a surrogate pair gives U+FFFD, because 'Text' cannot hold a lone
+-- surrogate. Strings are otherwise measured and ordered by UTF-16 code
+-- unit, as in JavaScript (see "JsonLogic.Core.Utf16").
 module JsonLogic.Core.Value
   ( Val (..)
   , fromValue
@@ -37,19 +39,26 @@ module JsonLogic.Core.Value
   , remainderJs
   , maximumJs
   , minimumJs
+  , isJsSpace
+  , nestsDeeperThan
+  , jsonWeightUpTo
+  , valWeightUpTo
   ) where
 
 import qualified Data.Aeson as Aeson
 import qualified Data.Aeson.KeyMap as KeyMap
 import Data.Bifunctor (first)
-import Data.Char (digitToInt, isDigit, isHexDigit, isSpace)
+import Data.Char (digitToInt, isDigit, isHexDigit)
 import Data.Foldable (toList)
 import Data.List (dropWhileEnd, sortOn, stripPrefix)
+import qualified Data.List as List
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import Data.Scientific (Scientific, base10Exponent, coefficient, scientific)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Numeric (floatToDigits)
+
+import JsonLogic.Core.Utf16 (compareUtf16)
 
 -- | A value during evaluation.
 data Val
@@ -60,9 +69,9 @@ data Val
     -- Written back as JSON @null@. The differential test found the
     -- difference by folding the two together.
     VUndefined
-  | VBool Bool
-  | VNum Double
-  | VStr Text
+  | VBool !Bool
+  | VNum !Double
+  | VStr !Text
   | VArr [Val]
   | VObj (KeyMap.KeyMap Val)
   deriving (Eq, Show)
@@ -87,6 +96,45 @@ fromValue (Aeson.String s) = VStr s
 fromValue (Aeson.Array items) = VArr (map fromValue (toList items))
 fromValue (Aeson.Object fields) = VObj (KeyMap.map fromValue fields)
 
+-- | Does a JSON value nest more than @n@ levels? An array or object that is
+-- not empty is one level; a scalar is none. Stops as soon as it knows, so
+-- the cost is bounded by @n@ along any path.
+nestsDeeperThan :: Int -> Aeson.Value -> Bool
+nestsDeeperThan n value = case value of
+  Aeson.Array items -> not (null items) && (n <= 0 || any (nestsDeeperThan (n - 1)) items)
+  Aeson.Object fields -> not (KeyMap.null fields) && (n <= 0 || any (nestsDeeperThan (n - 1)) (KeyMap.elems fields))
+  _ -> False
+
+-- | How many nodes a JSON value has, counted only up to @cap@: the work to
+-- walk it, without walking an enormous value to the end.
+jsonWeightUpTo :: Int -> Aeson.Value -> Int
+jsonWeightUpTo cap value = cap - remaining cap value
+  where
+    remaining budget v
+      | budget <= 0 = 0
+      | otherwise = case v of
+          Aeson.Array items -> children (budget - 1) (toList items)
+          Aeson.Object fields -> children (budget - 1) (KeyMap.elems fields)
+          _ -> budget - 1
+    children budget [] = budget
+    children budget (x : xs)
+      | budget <= 0 = 0
+      | otherwise = children (remaining budget x) xs
+
+-- | How many array elements, at any depth, a value holds, counted only up
+-- to @cap@. This is the work converting an array to a string or number
+-- takes; every other value is free.
+valWeightUpTo :: Int -> Val -> Int
+valWeightUpTo cap value = cap - remaining cap value
+  where
+    remaining budget v = case v of
+      VArr items -> children budget items
+      _ -> budget
+    children budget [] = budget
+    children budget (x : xs)
+      | budget <= 0 = 0
+      | otherwise = children (remaining (budget - 1) x) xs
+
 -- | Write a result back as JSON. @NaN@ and infinities become @null@.
 toValue :: Val -> Aeson.Value
 toValue VNull = Aeson.Null
@@ -97,7 +145,11 @@ toValue (VNum d)
   | otherwise = Aeson.Number (doubleToScientific d)
 toValue (VStr s) = Aeson.String s
 toValue (VArr items) = Aeson.toJSON (map toValue items)
-toValue (VObj fields) = Aeson.Object (KeyMap.map toValue fields)
+toValue (VObj fields) = Aeson.Object (KeyMap.map toValue (KeyMap.filter (not . isUndefined) fields))
+  where
+    -- JSON.stringify leaves out an object property whose value is undefined.
+    isUndefined VUndefined = True
+    isUndefined _ = False
 
 scientificToDouble :: Scientific -> Double
 scientificToDouble s = decimalToDouble (coefficient s) (toInteger (base10Exponent s))
@@ -179,10 +231,18 @@ numberToString d
 -- 2^53 the halfway points have too many digits to matter, so GHC's answer
 -- stands. (The differential test found this; the rule was checked against
 -- Python's @repr@ on over a hundred thousand large doubles.)
+--
+-- The same candidates settle ties. When a double is exactly halfway between
+-- two decimals of the shortest length (@9007199254740992 / 10@ is
+-- @900719925474099.25@, halfway between @.2@ and @.3@), ECMAScript takes
+-- the one whose last digit is even, and 'floatToDigits' does not.
 shortestDigits :: Double -> ([Int], Int)
 shortestDigits d
-  | d < 9007199254740992 = generated
-  | otherwise = fromMaybe generated (listToMaybe (mapMaybe shorter [1 .. length digits - 1]))
+  | d < 9007199254740992 =
+      -- A tie between two equally short candidates needs 16 or more digits:
+      -- below that, decimal spacing is wider than the spacing of doubles.
+      if length digits >= 16 then fromMaybe generated (shorter (length digits)) else generated
+  | otherwise = fromMaybe generated (listToMaybe (mapMaybe shorter [1 .. length digits]))
   where
     generated@(digits, pointPosition) = floatToDigits 10 d
     exact = toRational d
@@ -251,9 +311,32 @@ parseFloat (VNum d)
   | d == 0 = 0
   | otherwise = d
 parseFloat value =
-  case decimalPrefix (dropWhile isSpace (Text.unpack (toJsString value))) of
+  case decimalPrefix (dropWhile isJsSpace (Text.unpack (toJsString value))) of
     Just (number, _) -> number
     Nothing -> nan
+
+-- | ECMAScript's @WhiteSpace@ and @LineTerminator@ code points, which is what
+-- string-to-number conversion trims. Listed explicitly rather than taken from
+-- @Data.Char.isSpace@ because the two differ: U+FEFF, U+2028 and U+2029 are
+-- trimmed by JavaScript and not by @isSpace@, while U+0085 and U+180E are
+-- trimmed by neither (U+180E stopped being a space in Unicode 6.3).
+isJsSpace :: Char -> Bool
+isJsSpace c = case fromEnum c of
+  0x0009 -> True
+  0x000A -> True
+  0x000B -> True
+  0x000C -> True
+  0x000D -> True
+  0x0020 -> True
+  0x00A0 -> True
+  0x1680 -> True
+  0x2028 -> True
+  0x2029 -> True
+  0x202F -> True
+  0x205F -> True
+  0x3000 -> True
+  0xFEFF -> True
+  n -> n >= 0x2000 && n <= 0x200A
 
 -- | The string-to-number conversion of @Number(string)@: the whole
 -- trimmed string must be a literal; the empty string is zero.
@@ -266,7 +349,7 @@ stringToNumber source
         Just (number, []) -> number
         _ -> nan
   where
-    trimmed = dropWhileEnd isSpace (dropWhile isSpace (Text.unpack source))
+    trimmed = dropWhileEnd isJsSpace (dropWhile isJsSpace (Text.unpack source))
 
 -- | @0x..@, @0o..@, @0b..@ literals (unsigned, at least one digit).
 radixLiteral :: String -> Maybe Double
@@ -274,8 +357,22 @@ radixLiteral ('0' : marker : digits)
   | not (null digits)
   , Just base <- radixOf marker
   , all (isDigitIn base) digits =
-      Just (fromInteger (foldl (\acc c -> acc * base + toInteger (digitToInt c)) 0 digits))
+      Just (radixValue base digits)
 radixLiteral _ = Nothing
+
+-- | The value of a digit string in a power-of-two base. Anything with more
+-- than 1100 significant bits overflows a double, and is decided from the
+-- digit count so a hostile million-digit literal costs nothing.
+radixValue :: Integer -> String -> Double
+radixValue base digits
+  | length significant * bitsPerDigit > 1100 = infinity
+  | otherwise = fromRational (fromInteger (List.foldl' (\acc c -> acc * base + toInteger (digitToInt c)) 0 significant))
+  where
+    significant = dropWhile (== '0') digits
+    bitsPerDigit = case base of
+      16 -> 4
+      8 -> 3
+      _ -> 1
 
 radixOf :: Char -> Maybe Integer
 radixOf 'x' = Just 16
@@ -328,21 +425,48 @@ exponentPart input = case input of
             (digits, remainder) = span isDigit afterSign
          in if null digits
               then (0, input)
-              else (withSign isNegative (digitsToInteger digits), remainder)
+              else (withSign isNegative (exponentMagnitude digits), remainder)
   _ -> (0, input)
   where
     withSign flag n = if flag then negate n else n
 
+-- | An exponent's size, saturated at 10^9: every double is decided long
+-- before that, and a hostile exponent must not become a huge 'Integer'.
+exponentMagnitude :: String -> Integer
+exponentMagnitude digits
+  | length significant > 9 = 1000000000
+  | otherwise = digitsToInteger significant
+  where
+    significant = dropWhile (== '0') digits
+
 digitsToInteger :: String -> Integer
-digitsToInteger = foldl (\acc c -> acc * 10 + toInteger (digitToInt c)) 0
+digitsToInteger = List.foldl' (\acc c -> acc * 10 + toInteger (digitToInt c)) 0
 
 -- | Build the double from decimal digits and a power of ten, correctly
 -- rounded (see 'decimalToDouble').
+--
+-- Only the first 'significantDigits' digits are converted. A longer literal
+-- needs no more: 768 significant digits decide the rounding of every double
+-- (the longest exact decimal expansion of a halfway case), and any non-zero
+-- digit beyond them can only break a tie, which is recorded as one sticky
+-- trailing digit. That keeps the cost linear in the length of the literal;
+-- converting every digit is quadratic, and a million-digit string used in a
+-- number context would otherwise take minutes.
 assemble :: String -> String -> Integer -> Double
 assemble intDigits fracDigits exponentValue =
-  decimalToDouble
-    (digitsToInteger (intDigits ++ fracDigits))
-    (exponentValue - toInteger (length fracDigits))
+  decimalToDouble mantissa (exponentValue - toInteger (length fracDigits) + dropped)
+  where
+    digits = dropWhile (== '0') (intDigits ++ fracDigits)
+    excess = length digits - significantDigits
+    (mantissa, dropped)
+      | excess <= 0 = (digitsToInteger digits, 0)
+      | any (/= '0') (drop significantDigits digits) =
+          (digitsToInteger (take significantDigits digits) * 10 + 1, toInteger excess - 1)
+      | otherwise = (digitsToInteger (take significantDigits digits), toInteger excess)
+
+-- | Digits kept when converting a decimal literal; see 'assemble'.
+significantDigits :: Int
+significantDigits = 800
 
 -- ---------------------------------------------------------------------
 -- Equality
@@ -397,13 +521,13 @@ toPrimitive value = value
 -- else numerically (so any @NaN@ makes it false).
 lessThan :: Val -> Val -> Bool
 lessThan x y = case (toPrimitive x, toPrimitive y) of
-  (VStr a, VStr b) -> a < b
+  (VStr a, VStr b) -> compareUtf16 a b == LT
   (a, b) -> toNumber a < toNumber b
 
 -- | JavaScript's @<=@.
 lessOrEqual :: Val -> Val -> Bool
 lessOrEqual x y = case (toPrimitive x, toPrimitive y) of
-  (VStr a, VStr b) -> a <= b
+  (VStr a, VStr b) -> compareUtf16 a b /= GT
   (a, b) -> toNumber a <= toNumber b
 
 -- ---------------------------------------------------------------------
@@ -411,25 +535,42 @@ lessOrEqual x y = case (toPrimitive x, toPrimitive y) of
 -- ---------------------------------------------------------------------
 
 -- | JavaScript's @%@ on doubles: the remainder takes the dividend's
--- sign. Computed exactly in 'Rational'.
+-- sign, including when it is zero (@-4 % 2@ is @-0@). Computed exactly in
+-- 'Rational'.
 remainderJs :: Double -> Double -> Double
 remainderJs x y
   | isNaN x || isNaN y || isInfinite x || y == 0 = nan
   | isInfinite y = x
   | x == 0 = x
-  | otherwise = fromRational (rx - ry * fromInteger (truncate (rx / ry)))
+  | exact == 0 = if x < 0 then negate 0 else 0
+  | otherwise = fromRational exact
   where
     rx = toRational x
     ry = toRational y
+    exact = rx - ry * fromInteger (truncate (rx / ry))
 
--- | @Math.max@: @NaN@ if any argument is, @-Infinity@ for none.
+-- | @Math.max@: @NaN@ if any argument is, @-Infinity@ for none, and
+-- @+0@ above @-0@ regardless of argument order.
 maximumJs :: [Double] -> Double
 maximumJs xs
   | any isNaN xs = nan
-  | otherwise = foldl max (negate infinity) xs
+  | otherwise = List.foldl' larger (negate infinity) xs
+  where
+    larger a b
+      | a > b = a
+      | b > a = b
+      | isNegativeZero a = b
+      | otherwise = a
 
--- | @Math.min@: @NaN@ if any argument is, @Infinity@ for none.
+-- | @Math.min@: @NaN@ if any argument is, @Infinity@ for none, and
+-- @-0@ below @+0@ regardless of argument order.
 minimumJs :: [Double] -> Double
 minimumJs xs
   | any isNaN xs = nan
-  | otherwise = foldl min infinity xs
+  | otherwise = List.foldl' smaller infinity xs
+  where
+    smaller a b
+      | a < b = a
+      | b < a = b
+      | isNegativeZero a = a
+      | otherwise = b
