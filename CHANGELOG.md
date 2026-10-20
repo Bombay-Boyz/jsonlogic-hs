@@ -49,6 +49,15 @@ properties only (no prototype chain), data never run as rules by `missing`,
 a slice through a surrogate pair gives U+FFFD, `log` does not print,
 exact custom operator names, and the resource limits.
 
+### Hardening
+
+* A `var`, `missing` or `missing_some` lookup into a large array or string
+  is now charged steps for the elements it walks past, so the step limit
+  bounds the work of a lookup as well as the number of nodes.
+* `OperatorsError` now lives in `JsonLogic.Core.Errors` (still re-exported
+  from `JsonLogic.Core.Eval` and `JsonLogic`).
+* The benchmark suite uses tasty-bench; see `bench/README.md`.
+
 ### Fixed during hardening
 
 Found by the outlier catalogue and fixed before release: string-to-number

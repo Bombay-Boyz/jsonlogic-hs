@@ -1,0 +1,67 @@
+name: Benchmark comparison
+
+# Runs two commits' benchmarks one after the other on the SAME machine and
+# fails if the second is materially slower. Timings from different machines
+# are not comparable, so this is the only place a regression is judged.
+#
+# Run it from the Actions tab before merging a change that touches the
+# evaluator, and before a release. Both refs must contain bench/Bench.hs.
+on:
+  workflow_dispatch:
+    inputs:
+      base:
+        description: "Commit, branch or tag to compare against"
+        required: true
+        default: main
+      head:
+        description: "Commit, branch or tag under test"
+        required: true
+      threshold:
+        description: "Fail if any benchmark is this many percent slower"
+        required: true
+        default: "15"
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.base }}
+          path: base
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.head }}
+          path: head
+
+      - uses: haskell-actions/setup@0f8e8c99d88aeb3fbfd523f1ef2c6f762d10d64d # v2
+        with:
+          ghc-version: "9.14.1"
+          cabal-version: latest
+
+      - run: cabal update
+
+      - name: benchmark the base
+        working-directory: base
+        run: bash scripts/bench.sh "$GITHUB_WORKSPACE/results-base"
+
+      - name: benchmark the head against it
+        working-directory: head
+        env:
+          THRESHOLD: ${{ inputs.threshold }}
+        run: |
+          bash scripts/bench.sh "$GITHUB_WORKSPACE/results-head" --baseline "$GITHUB_WORKSPACE/results-base/results.csv" --fail-if-slower "$THRESHOLD"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: bench-compare-${{ github.run_number }}
+          path: |
+            results-base/
+            results-head/
+          retention-days: 90

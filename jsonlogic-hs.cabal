@@ -34,7 +34,7 @@ copyright:          (c) 2026 Bombay-Boyz
 homepage:           https://github.com/Bombay-Boyz/jsonlogic-hs
 bug-reports:        https://github.com/Bombay-Boyz/jsonlogic-hs/issues
 build-type:         Simple
-tested-with:        GHC ==9.14.1
+tested-with:        GHC ==9.6.7 || ==9.8.4 || ==9.10.3 || ==9.12.4 || ==9.14.1
 extra-doc-files:    CHANGELOG.md
                     README.md
                     docs/COMPATIBILITY.md
@@ -82,6 +82,10 @@ common warnings
                     -Wmissing-export-lists
                     -Wpartial-fields
                     -Wredundant-constraints
+                    -Wunused-imports
+                    -Wunused-local-binds
+                    -Wunused-matches
+                    -Wunused-top-binds
   if flag(werror)
     ghc-options:    -Werror
 
@@ -187,10 +191,12 @@ executable jsonlogic-hs-bench
     buildable:      False
   hs-source-dirs:   bench
   main-is:          Bench.hs
-  ghc-options:      -rtsopts
+  -- -T makes the RTS keep allocation statistics, which tasty-bench reports
+  ghc-options:      -O2 -rtsopts "-with-rtsopts=-T"
   build-depends:    base                 >=4.18 && <4.23
                   , aeson                >=2.1 && <2.4
                   , bytestring           >=0.11 && <0.13
+                  , tasty-bench          >=0.3 && <0.5
                   , text                 >=2.0 && <2.3
                   , jsonlogic-hs
 

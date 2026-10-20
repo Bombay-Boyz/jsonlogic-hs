@@ -6,8 +6,14 @@ on:
   pull_request:
   workflow_dispatch:
   schedule:
-    # nightly: the full outlier tier and a large differential run
+    # nightly: the full outlier tier, a large differential run, the benchmarks
     - cron: "17 3 * * *"
+
+# A newer push to the same pull request replaces the run in progress; runs on
+# main and nightly runs always finish.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Actions are pinned by commit SHA, not by a movable tag, so a compromised or
 # re-pointed tag cannot change what CI runs. The tag each SHA was resolved
@@ -20,6 +26,7 @@ jobs:
   build:
     name: build and test (GHC ${{ matrix.ghc }})
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -33,7 +40,8 @@ jobs:
           cabal-version: latest
 
       # Warnings are errors on the primary compiler only: other GHCs add and
-      # remove warnings, and that must not fail the build there.
+      # remove warnings, and that must not fail the build there
+      # (docs/adr/0001-werror-behind-a-flag.md).
       - name: Relax -Werror off the primary GHC
         if: matrix.ghc != '9.14.1'
         run: |
@@ -44,7 +52,7 @@ jobs:
           path: |
             ~/.cabal/store
             dist-newstyle
-          key: ${{ runner.os }}-ghc-${{ matrix.ghc }}-${{ hashFiles('**/*.cabal') }}
+          key: ${{ runner.os }}-ghc-${{ matrix.ghc }}-${{ hashFiles('**/*.cabal', 'cabal.project') }}
           restore-keys: |
             ${{ runner.os }}-ghc-${{ matrix.ghc }}-
 
@@ -65,8 +73,15 @@ jobs:
           cd "$dir"/jsonlogic-hs-*
           cabal test all --test-show-details=direct
 
+      # A clean project outside this repository, depending only on the
+      # source distribution and importing only the public JsonLogic module.
+      - name: consumer smoke test
+        if: matrix.ghc == '9.14.1'
+        run: bash scripts/consumer-smoke.sh
+
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - run: bash scripts/lint.sh
@@ -76,6 +91,7 @@ jobs:
   # exactly what its generator writes.
   harness:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -93,7 +109,7 @@ jobs:
           path: |
             ~/.cabal/store
             dist-newstyle
-          key: ${{ runner.os }}-ghc-9.14.1-harness-${{ hashFiles('**/*.cabal') }}
+          key: ${{ runner.os }}-ghc-9.14.1-harness-${{ hashFiles('**/*.cabal', 'cabal.project') }}
           restore-keys: |
             ${{ runner.os }}-ghc-9.14.1-harness-
 
@@ -107,6 +123,7 @@ jobs:
   # failure can be repeated; a failing case is shrunk and uploaded.
   differential:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -124,7 +141,7 @@ jobs:
           path: |
             ~/.cabal/store
             dist-newstyle
-          key: ${{ runner.os }}-ghc-9.14.1-diff-${{ hashFiles('**/*.cabal') }}
+          key: ${{ runner.os }}-ghc-9.14.1-diff-${{ hashFiles('**/*.cabal', 'cabal.project') }}
           restore-keys: |
             ${{ runner.os }}-ghc-9.14.1-diff-
 
@@ -133,11 +150,23 @@ jobs:
       - name: random differential run
         run: cabal run jsonlogic-hs-differential -- ${{ github.event_name == 'schedule' && '200000' || '20000' }} ${{ github.run_number }}
 
+      # The shrunk reproductions and the list of mismatches, so a failure can
+      # be replayed offline with `--replay` (differential/README.md).
+      - name: upload reproductions
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: differential-failure-${{ github.run_number }}
+          path: differential/out/
+          if-no-files-found: ignore
+          retention-days: 30
+
   # Nightly only: the whole outlier catalogue (about 138,000 cases), not the
   # committed sample.
   outliers-full:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -157,11 +186,13 @@ jobs:
       - name: replay it
         run: cabal run jsonlogic-hs-outliers -- "$RUNNER_TEMP/outliers-full.jsonl"
 
-  # Nightly only: a short benchmark run, so a large slowdown shows up in the
-  # log (compare against the previous night's output by eye).
+  # Nightly only: the benchmarks, with their environment, kept as an artifact.
+  # Shared runners are too noisy to fail a build on a timing; a regression is
+  # judged by bench-compare.yml, which runs two commits on one machine.
   bench:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -171,4 +202,32 @@ jobs:
           cabal-version: latest
 
       - run: cabal update
-      - run: cabal run -O2 jsonlogic-hs-bench -- 5
+      - run: bash scripts/bench.sh bench-results
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: bench-${{ github.sha }}
+          path: bench-results/
+          retention-days: 90
+
+  # Dead code (Standard 1.11): anything exported or defined that nothing
+  # reaches from the public API, a test, or an executable. Advisory until it
+  # has run clean once on main (docs/adr/0007-weeder-advisory.md).
+  weeder:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: haskell-actions/setup@0f8e8c99d88aeb3fbfd523f1ef2c6f762d10d64d # v2
+        with:
+          ghc-version: "9.14.1"
+          cabal-version: latest
+
+      - run: cabal update
+      - name: build with interface files
+        run: cabal build all --ghc-options=-fwrite-ide-info --ghc-options=-hiedir=.hie
+      - name: install weeder
+        run: cabal install weeder --index-state=2026-10-19T00:00:00Z --installdir="$HOME/.local/bin" --install-method=copy --overwrite-policy=always
+      - run: '"$HOME/.local/bin/weeder"'

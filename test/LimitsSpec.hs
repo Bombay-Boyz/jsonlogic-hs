@@ -43,6 +43,12 @@ spec = describe "resource limits" $ do
         `shouldBe` Left (EvalFailure (LimitExceeded (StepLimit 2)))
     it "rejects when nothing is allowed" $
       run' defaultConfig{maxSteps = 0} "1" Null `shouldBe` Left (EvalFailure (LimitExceeded (StepLimit 0)))
+    it "charges a lookup for the array elements it walks past" $ do
+      let rule = "{\"var\":\"x.2\"}"
+          dat = json "{\"x\":[10,20,30]}"
+      -- the var and its path are two steps; walking past two elements is two more
+      run' defaultConfig{maxSteps = 4} rule dat `shouldBe` Right (Number 30)
+      run' defaultConfig{maxSteps = 3} rule dat `shouldSatisfy` isStepLimit
     it "charges every iteration of map" $ do
       let rule = "{\"map\":[[1,2,3],{\"var\":\"\"}]}"
       -- map node (1), the array and its three literals (4), and three
@@ -121,6 +127,11 @@ spec = describe "resource limits" $ do
       let deepData = foldr (\_ inner -> toJSON [inner]) Null [1 .. 20000 :: Int]
       r <- within10s (applyWithConfig defaultConfig noOperators (object ["var" .= ("" :: String)]) deepData)
       r `shouldSatisfy` isRight'
+    it "repeated lookups deep into a large array are paid for in steps" $ do
+      let big = toJSON [1 .. 5000 :: Int]
+          rule = object ["+" .= replicate 2000 (object ["var" .= ("x.4999" :: String)])]
+      r <- within10s (applyWithConfig defaultConfig noOperators rule (object ["x" .= big]))
+      r `shouldSatisfy` isStepLimit
     it "repeated comparison of a large array is paid for in steps" $ do
       let big = toJSON [1 .. 5000 :: Int]
           rule = object ["+" .= replicate 2000 (object ["==" .= [object ["var" .= ("x" :: String)], toJSON (1 :: Int)]])]

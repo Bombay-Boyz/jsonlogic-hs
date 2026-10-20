@@ -1,3 +1,20 @@
-# Minimal starting configuration. Add ignores here only in response to
-# a specific, justified hlint finding — not preemptively.
-- arguments: []
+# Standard 5.2: banned outright, as errors. Each entry is allowed nowhere
+# (within: []) unless a comment says where and why. Add ignores only in
+# response to a specific, justified hlint finding, and record them in
+# docs/adr/ (Standard 5.9).
+- functions:
+    - {name: head, within: [], message: "partial: match on the list or use NonEmpty (Standard 1.1)"}
+    - {name: tail, within: [], message: "partial: match on the list or use NonEmpty (Standard 1.1)"}
+    - {name: init, within: [], message: "partial: match on the list or use NonEmpty (Standard 1.1)"}
+    - {name: last, within: [], message: "partial: match on the list or use NonEmpty (Standard 1.1)"}
+    - {name: fromJust, within: [], message: "partial: match on the Maybe (Standard 1.1)"}
+    - {name: undefined, within: [], message: "a stub that type-checks and panics (Standard 1.11)"}
+    - {name: unsafePerformIO, within: [], message: "breaks referential transparency (Standard 1.7)"}
+    - {name: trace, within: [], message: "no Debug.Trace in committed code (Standard 1.7)"}
+    - {name: traceShow, within: [], message: "no Debug.Trace in committed code (Standard 1.7)"}
+    - {name: traceShowId, within: [], message: "no Debug.Trace in committed code (Standard 1.7)"}
+    - {name: traceM, within: [], message: "no Debug.Trace in committed code (Standard 1.7)"}
+    # `error` is allowed only in the test modules that build fixtures from
+    # literals, where a malformed literal is a bug in the test itself
+    # (docs/adr/0004).
+    - {name: error, within: [CompatSpec, EvalSpec, LimitsSpec], message: "partial: return an Either (Standard 1.1)"}

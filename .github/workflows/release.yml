@@ -1,0 +1,83 @@
+name: Release
+
+# Pushing a tag vX.Y.Z.W builds, tests and checks the exact source
+# distribution, then publishes it with its checksums and a manifest of what it
+# was verified against. Nothing is published unless every check passes, and
+# the publishing job is the only one that can write.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: the tag matches the package version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version=$(awk '/^version:/ {print $2; exit}' jsonlogic-hs.cabal)
+          [ "$TAG" = "v$version" ] || { echo "tag $TAG does not match version $version in jsonlogic-hs.cabal" >&2; exit 1; }
+
+      - uses: haskell-actions/setup@0f8e8c99d88aeb3fbfd523f1ef2c6f762d10d64d # v2
+        with:
+          ghc-version: "9.14.1"
+          cabal-version: latest
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - run: cd differential && npm ci --no-audit --no-fund
+      - run: cabal update
+      - run: bash scripts/lint.sh
+      - run: cabal build all
+      - run: cabal test all --test-show-details=direct
+      - run: bash scripts/check-harness.sh
+        env:
+          CI: "true"
+      - name: differential run
+        run: cabal run jsonlogic-hs-differential -- 100000 ${{ github.run_number }}
+      - run: cabal check
+      - name: the source distribution builds and a clean consumer uses it
+        run: bash scripts/consumer-smoke.sh
+      - name: collect the artifact, its checksum and the manifest
+        env:
+          TAG: ${{ github.ref_name }}
+        run: bash scripts/release-manifest.sh release-out "$TAG"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-out
+          path: release-out/
+          retention-days: 30
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-out
+          path: release-out
+
+      # The exact files about to be published are the ones that were checked.
+      - name: verify the checksums
+        working-directory: release-out
+        run: sha256sum -c SHA256SUMS
+
+      - name: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" release-out/* --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --generate-notes

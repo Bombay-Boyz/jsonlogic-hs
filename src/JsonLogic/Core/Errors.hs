@@ -15,6 +15,7 @@ module JsonLogic.Core.Errors
   , Error (..)
   , EvalError (..)
   , LimitKind (..)
+  , OperatorsError (..)
   , ParseError (..)
   , renderError
   , renderEvalError
@@ -75,6 +76,15 @@ data EvalError
     InvalidOperand OperatorName
   | -- | A configured resource limit was exceeded.
     LimitExceeded LimitKind
+  deriving (Eq, Show)
+
+-- | Why a registry of custom operators was refused. Raised when the
+-- registry is built, before any rule is read or evaluated.
+data OperatorsError
+  = -- | The name belongs to a builtin operator, which would shadow it.
+    ReservedOperatorName OperatorName
+  | -- | The name was given more than once.
+    DuplicateOperatorName OperatorName
   deriving (Eq, Show)
 
 -- | Either stage's failure, for callers that parse and evaluate in one go.

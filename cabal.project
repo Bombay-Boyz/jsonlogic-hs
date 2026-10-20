@@ -1,6 +1,10 @@
 packages: .
 tests: True
 
+-- Resolve dependencies as of one fixed day, so a fresh checkout builds the
+-- same plan next year (docs/adr/0005). Move it forward deliberately.
+index-state: 2026-10-19T00:00:00Z
+
 -- Our own builds treat warnings as errors and build the development tools
 -- (differential tester, benchmarks). Released builds (the package
 -- defaults) do none of this.

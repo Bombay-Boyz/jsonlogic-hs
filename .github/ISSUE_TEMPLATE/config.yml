@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Known differences from the reference
+    url: https://github.com/Bombay-Boyz/jsonlogic-hs/blob/main/docs/COMPATIBILITY.md
+    about: A behaviour listed there is deliberate. Anything not listed is a bug.

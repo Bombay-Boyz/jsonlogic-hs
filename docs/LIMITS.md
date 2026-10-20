@@ -31,7 +31,10 @@ A step is one rule node evaluated, plus: one extra step per element of an
 array operand that an operator converts to a string or number (so comparing a
 big array a thousand times is paid for), one per element or code unit that
 `cat` or `merge` builds, and one per node of a value a custom operator
-returns. Iteration (`map`, `filter`, `reduce`, `all`, `some`, `none`) is
+returns. Walking a path into the data is paid for too: a `var`, `missing`
+or `missing_some` path costs one step per array element it passes over and
+one per code point of a string it indexes or measures, so a lookup into a
+large array is charged for the work it does. Iteration (`map`, `filter`, `reduce`, `all`, `some`, `none`) is
 charged through the nodes its body evaluates. Because building a result costs
 steps in proportion to its size, the total work of an evaluation is bounded
 by `maxSteps` up to a constant factor, even for rules designed to amplify
@@ -49,6 +52,9 @@ under a second.
 - **The size of the input.** The rule and the data are values you already
   hold. Parsing JSON text is aeson's job, and it has no depth limit of its
   own: bound the size of untrusted text before decoding it.
+- **Searching or slicing a very large string.** `in`, `substr` and string
+  comparison take time linear in the string, which comes from the data you
+  hold; the string limit bounds what `cat` builds, not what the data holds.
 - **Reading a long numeric string.** It is linear in its length (a
   million-digit string takes about 0.15 s), not bounded by a step.
 

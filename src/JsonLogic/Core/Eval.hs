@@ -32,7 +32,7 @@ module JsonLogic.Core.Eval
   ) where
 
 import Control.Applicative ((<|>))
-import Control.Monad (foldM, when)
+import Control.Monad (filterM, foldM, when)
 import qualified Data.Aeson as Aeson
 import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as KeyMap
@@ -46,7 +46,7 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 
 import JsonLogic.Core.Config (Config (..), defaultConfig)
-import JsonLogic.Core.Errors (EvalError (..), LimitKind (..))
+import JsonLogic.Core.Errors (EvalError (..), LimitKind (..), OperatorsError (..))
 import JsonLogic.Core.Parse (builtinOperatorNames)
 import JsonLogic.Core.Rule (OperatorName (..), Rule, RuleF (..))
 import JsonLogic.Core.Utf16 (utf16CharAt, utf16Length, utf16Slice)
@@ -138,14 +138,6 @@ instance Semigroup Operators where
 instance Monoid Operators where
   mempty = noOperators
 
--- | Why a registry of custom operators was refused.
-data OperatorsError
-  = -- | The name belongs to a builtin operator, which would shadow it.
-    ReservedOperatorName OperatorName
-  | -- | The name was given more than once.
-    DuplicateOperatorName OperatorName
-  deriving (Eq, Show)
-
 -- | No custom operators: any operator outside the builtin set is an error.
 noOperators :: Operators
 noOperators = Operators (const Nothing)
@@ -185,17 +177,22 @@ algebra config operators node = \env -> charge config 1 >> body env
 compile :: Config -> Operators -> RuleF Eval -> Eval
 compile config operators node = case node of
   Lit literal ->
-    -- converted once, when the rule is compiled, not on every evaluation
+    -- converted once per evaluation, not on every use of the literal: a
+    -- literal inside @map@ is shared by all of its iterations
     let converted = fromValue literal in const (pure converted)
   Arr items -> fmap VArr . evalAll items
   Var path fallback -> \env -> do
     key <- path env
     notFound <- maybe (pure VNull) ($ env) fallback
-    pure (lookupVariable env key notFound)
+    let (work, found) = lookupVariable (workCap config) env key notFound
+    charge config work
+    pure found
   Missing keys -> \env -> do
     names <- evalAll keys env
     mapM_ (chargeConversion config) names
-    pure (VArr (missingKeys names env))
+    let (work, absent) = missingKeys (workCap config) names env
+    charge config work
+    pure (VArr absent)
   MissingSome needed options -> \env -> do
     count <- needed env
     listed <- options env
@@ -233,7 +230,7 @@ compile config operators node = case node of
   Filter collection logic ->
     withCollection collection (VArr []) $ \items -> do
       guardInput config items
-      VArr <$> filterRun (fmap truthy . logic) items
+      VArr <$> filterM (fmap truthy . logic) items
   Reduce collection logic initial -> reduceRule collection logic initial
   All collection logic ->
     withCollection collection (VBool False) $ \items ->
@@ -332,6 +329,10 @@ between config holds x y z env = do
   pure (VBool (maybe (holds a b) (\third -> holds a b && holds b third) c))
 
 -- | Condition/consequent pairs, then an optional else; no branch means null.
+--
+-- Hand-written recursion (Standard 4.1): a search that stops at the first
+-- condition that holds, in 'Run'. It is a right fold with early exit, and
+-- @base@ has no monadic combinator for that shape.
 evalIf :: [Eval] -> Eval
 evalIf (condition : consequent : rest) env = do
   decided <- condition env
@@ -341,6 +342,9 @@ evalIf [] _ = pure VNull
 
 -- | The first falsy operand, or the last; JavaScript's @undefined@ (not
 -- null) when there are none.
+--
+-- Hand-written recursion (Standard 4.1): a right fold with early exit in
+-- 'Run'; @base@ has no monadic combinator for that shape.
 evalAnd :: [Eval] -> Eval
 evalAnd [] _ = pure VUndefined
 evalAnd [only] env = only env
@@ -350,6 +354,8 @@ evalAnd (first : rest) env = do
 
 -- | The first truthy operand, or the last; JavaScript's @undefined@ (not
 -- null) when there are none.
+--
+-- Hand-written recursion (Standard 4.1): the dual of 'evalAnd'.
 evalOr :: [Eval] -> Eval
 evalOr [] _ = pure VUndefined
 evalOr [only] env = only env
@@ -398,15 +404,6 @@ addLength config total piece
   where
     total' = total + utf16Length piece
 
-filterRun :: (Val -> Run Bool) -> [Val] -> Run [Val]
-filterRun keep = go
-  where
-    go [] = pure []
-    go (x : xs) = do
-      kept <- keep x
-      rest <- go xs
-      pure (if kept then x : rest else rest)
-
 -- | Fold the array with the sub-rule, evaluated against an object holding
 -- the current element and the accumulator.
 reduceRule :: Eval -> Eval -> Eval -> Eval
@@ -420,12 +417,20 @@ reduceRule collection logic initial env = do
     step accumulator item =
       logic (VObj (KeyMap.fromList [("current", item), ("accumulator", accumulator)]))
 
+-- | Does the sub-rule hold for every item? Stops at the first that does not.
+--
+-- Hand-written recursion (Standard 4.1): a monadic @all@, which @base@ does
+-- not provide, in 'Run'.
 allTruthy :: Eval -> [Val] -> Run Bool
 allTruthy _ [] = pure True
 allTruthy logic (item : rest) = do
   value <- logic item
   if truthy value then allTruthy logic rest else pure False
 
+-- | Does the sub-rule hold for some item? Stops at the first that does.
+--
+-- Hand-written recursion (Standard 4.1): a monadic @any@, the dual of
+-- 'allTruthy'.
 anyTruthy :: Eval -> [Val] -> Run Bool
 anyTruthy _ [] = pure False
 anyTruthy logic (item : rest) = do
@@ -458,22 +463,32 @@ contains _ _ = False
 
 -- | Which of the keys have no value, or an empty-string one. If the first
 -- argument is itself an array, it is the list of keys.
-missingKeys :: [Val] -> Val -> [Val]
-missingKeys args dat = filter isMissing keys
+--
+-- The first component is the work the lookups did, in steps (see
+-- 'lookupVariable'); the cap bounds how far any one lookup is followed.
+missingKeys :: Int -> [Val] -> Val -> (Int, [Val])
+missingKeys cap args dat =
+  ( sum [work | (_, work, _) <- probes]
+  , [key | (key, _, True) <- probes]
+  )
   where
     keys = case args of
       VArr listed : _ -> listed
       _ -> args
-    isMissing key = case lookupKey key of
+    probes = map probe keys
+    probe key =
+      let (work, found) = lookupKey key
+       in (key, work, isMissing found)
+    isMissing found = case found of
       VNull -> True
       VStr s -> Text.null s
       _ -> False
     -- The reference looks each key up with @{"var": key}@, so a key that is
     -- itself an array is a @var@'s argument list: path, then default.
     lookupKey key = case key of
-      VArr [] -> dat
-      VArr (path : rest) -> lookupVariable dat path (fromMaybe VNull (listToMaybe rest))
-      _ -> lookupVariable dat key VNull
+      VArr [] -> (0, dat)
+      VArr (path : rest) -> lookupVariable cap dat path (fromMaybe VNull (listToMaybe rest))
+      _ -> lookupVariable cap dat key VNull
 
 -- | @missing_some@: nothing is missing if at least @count@ of the options
 -- are present; otherwise the missing ones.
@@ -491,8 +506,9 @@ missingSome config count options env = case options of
     let names = case options of
           VArr items -> items
           other -> [other]
-        absent = missingKeys names env
-        have = case optionLength of
+        (work, absent) = missingKeys (workCap config) names env
+    charge config work
+    let have = case optionLength of
           Just n -> n - fromIntegral (length absent)
           Nothing -> 0 / 0
     pure (if lessOrEqual count (VNum have) then VArr [] else VArr absent)
@@ -503,13 +519,24 @@ missingSome config count options env = case options of
       VObj fields -> toNumber <$> KeyMap.lookup "length" fields
       _ -> Nothing
 
+-- | The most work a lookup is followed for: one more than the whole budget,
+-- so a lookup that cannot be paid for is cut short rather than completed.
+workCap :: Config -> Int
+workCap config = maxSteps config + 1
+
 -- | @var@: look a dotted path up in the data. An empty or null path is
 -- the data itself; a missing step gives the fallback.
-lookupVariable :: Val -> Val -> Val -> Val
-lookupVariable dat path notFound
-  | isEmptyPath path = dat
-  | otherwise = fromMaybe (nullIfUndefined notFound) (descend dat (Text.splitOn "." (toJsString path)))
+--
+-- The first component is the work the walk did, in steps: one per array
+-- element passed over and one per code unit of a string indexed or measured
+-- (see 'property'). The caller charges it, so a lookup into a large array
+-- is paid for in proportion to its size. It is counted only up to @cap@.
+lookupVariable :: Int -> Val -> Val -> Val -> (Int, Val)
+lookupVariable cap dat path notFound
+  | isEmptyPath path = (0, dat)
+  | otherwise = (work, fromMaybe (nullIfUndefined notFound) found)
   where
+    (work, found) = descend cap dat (Text.splitOn "." (toJsString path))
     isEmptyPath VNull = True
     isEmptyPath VUndefined = True
     isEmptyPath (VStr s) = Text.null s
@@ -531,30 +558,52 @@ nullIfUndefined VUndefined = VNull
 nullIfUndefined value = value
 
 -- | Follow the path one key at a time; 'Nothing' is "no such property".
-descend :: Val -> [Text] -> Maybe Val
-descend current [] = Just current
-descend VNull _ = Nothing
-descend VUndefined _ = Nothing
-descend current (key : keys) = property current key >>= follow
+-- The first component is the work done, summed over the keys and given up
+-- as soon as it passes @cap@ (the caller then fails the evaluation).
+descend :: Int -> Val -> [Text] -> (Int, Maybe Val)
+descend cap = go 0
   where
-    -- a property that is itself undefined counts as missing, as in the reference
-    follow VUndefined = Nothing
-    follow child = descend child keys
+    go spent current keys
+      | spent > cap = (spent, Nothing)
+      | otherwise = case keys of
+          [] -> (spent, Just current)
+          key : rest -> case current of
+            VNull -> (spent, Nothing)
+            VUndefined -> (spent, Nothing)
+            _ ->
+              let (work, found) = property cap current key
+                  spent' = spent + work
+               in case found of
+                    Nothing -> (spent', Nothing)
+                    -- a property that is itself undefined counts as missing,
+                    -- as in the reference
+                    Just VUndefined -> (spent', Nothing)
+                    Just child -> go spent' child rest
 
 -- | JavaScript property access on a JSON value: object keys, array and
 -- string indices, and @length@. Only a value's own properties are seen:
 -- the reference would also find names inherited through the prototype
 -- chain (@constructor@, @toString@, ...), which JSON data does not have
 -- (docs/COMPATIBILITY.md, DEV-INHERITED).
-property :: Val -> Text -> Maybe Val
-property (VObj fields) key = KeyMap.lookup (Key.fromText key) fields
-property (VArr items) key
-  | key == "length" = Just (VNum (fromIntegral (length items)))
-  | otherwise = arrayIndex key >>= \i -> listToMaybe (drop i items)
-property (VStr s) key
-  | key == "length" = Just (VNum (fromIntegral (utf16Length s)))
-  | otherwise = arrayIndex key >>= \i -> VStr <$> utf16CharAt i s
-property _ _ = Nothing
+--
+-- The first component is the work, in steps: an object lookup is free, an
+-- array index costs the elements before it (counted up to @cap@), measuring
+-- an array costs its length, and a string costs its length in code points.
+property :: Int -> Val -> Text -> (Int, Maybe Val)
+property _ (VObj fields) key = (0, KeyMap.lookup (Key.fromText key) fields)
+property cap (VArr items) key
+  | key == "length" = (lengthUpTo cap items, Just (VNum (fromIntegral (length items))))
+  | otherwise = case arrayIndex key of
+      Nothing -> (0, Nothing)
+      Just i -> (lengthUpTo (min i cap) items, listToMaybe (drop i items))
+property cap (VStr s) key
+  | key == "length" = (size, Just (VNum (fromIntegral (utf16Length s))))
+  | otherwise = case arrayIndex key of
+      Nothing -> (0, Nothing)
+      Just i -> (size, VStr <$> utf16CharAt i s)
+  where
+    size = min cap (Text.length s)
+property _ _ _ = (0, Nothing)
 
 -- | A canonical array index: digits, no leading zero.
 arrayIndex :: Text -> Maybe Int

@@ -13,7 +13,7 @@
 # Binaries are found with `cabal list-bin`; override with CONFORMANCE_BIN and
 # OUTLIERS_BIN.
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 ROOT=$(pwd)
 
 bin() { # name

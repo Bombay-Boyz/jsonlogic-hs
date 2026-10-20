@@ -1,0 +1,71 @@
+name: Bug report
+description: The library gave a different answer from json-logic-js, crashed, or ignored a limit
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        jsonlogic-hs is checked against json-logic-js 2.0.5. A report is easiest to act on when it can be reproduced from this page alone. Please check [docs/COMPATIBILITY.md](https://github.com/Bombay-Boyz/jsonlogic-hs/blob/main/docs/COMPATIBILITY.md) first: a difference listed there is deliberate.
+  - type: input
+    id: version
+    attributes:
+      label: jsonlogic-hs version and GHC
+      description: The package version or commit, and `ghc --version`.
+      placeholder: "0.1.0.0 / GHC 9.14.1"
+    validations:
+      required: true
+  - type: textarea
+    id: rule
+    attributes:
+      label: Rule
+      description: The JSON rule, exactly as given.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: data
+    attributes:
+      label: Data
+      description: The JSON data the rule was applied to.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Configuration
+      description: "Arity mode and any limits changed from the defaults, and any custom operators."
+      placeholder: "defaultConfig, or defaultConfig {arityMode = Lenient, maxSteps = 5000}"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+      description: "What json-logic-js 2.0.5 returns for the same rule and data (and how you ran it)."
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result
+      description: What jsonlogic-hs returned, or the error, or how it crashed or hung.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: A short Haskell program or `cabal repl` session, or the line from the differential tool's `repro-N.jsonl`.
+      render: haskell
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I checked docs/COMPATIBILITY.md and this is not a listed difference.
+          required: true
+        - label: The rule and data above are the smallest I found that still show the problem.
+          required: true

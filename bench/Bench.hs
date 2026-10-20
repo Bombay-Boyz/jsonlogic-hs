@@ -1,120 +1,131 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 -- |
--- Benchmarks: a fixed set of workloads, each timed over several runs and
--- reported as the best time (the least noisy statistic for a CPU-bound
--- pure function) in microseconds per operation.
+-- Benchmarks (Standard 5.6): statistically sound timing and allocation of
+-- the engine, by tasty-bench.
 --
--- Usage:
+-- Four groups, so each cost is read on its own:
 --
--- > cabal run jsonlogic-hs-bench -- [REPEATS]
+-- * @one-shot@: 'apply', which reads the rule and evaluates it, the cost of
+--   a rule used once.
+-- * @compile only@: reading a rule, with no evaluation.
+-- * @precompiled run@: 'run' of a rule read beforehand, the cost of a rule
+--   used many times. One-shot minus this is the reading cost.
+-- * @limits@: a rule that stops at a resource limit.
 --
--- Output is one line per workload, @name  best-µs  per-op-µs@, followed by
--- the GC and allocation totals of the whole run. Compare two runs by hand
--- or with @scripts/bench-compare.sh@; there is no committed baseline,
--- because timings are only comparable on one machine.
+-- Large inputs live in the /data/, built once, and every rule or datum
+-- depends on the argument tasty-bench passes in, so GHC cannot lift a
+-- benchmark's work out of the timing loop and run it only once.
 --
--- The workloads cover the shapes that matter: a tiny rule applied many
--- times (the common case), compile-once versus apply, iteration over
--- large arrays, string building, number parsing and printing, deep
--- nesting, and a rule that hits a resource limit.
+-- > cabal run -O2 jsonlogic-hs-bench -- --csv results.csv
+-- > cabal run -O2 jsonlogic-hs-bench -- --baseline old.csv --fail-if-slower 15
+--
+-- 'scripts/bench.sh' and 'scripts/bench-compare.sh' wrap both, and record
+-- the environment next to the numbers. Timings are comparable only between
+-- runs on one machine; see bench/README.md.
 module Main (main) where
 
-import Control.Exception (evaluate)
-import Control.Monad (forM_)
 import Data.Aeson (Value (..), encode, object, toJSON, (.=))
+import qualified Data.Aeson.Key as Key
 import qualified Data.ByteString.Lazy as LBS
 import Data.Either (fromRight)
-import Data.List (minimumBy)
-import Data.Ord (comparing)
 import qualified Data.Text as Text
-import GHC.Clock (getMonotonicTime)
-import System.Environment (getArgs)
+import Test.Tasty.Bench (Benchmark, bench, bgroup, defaultMain, whnf)
 
 import JsonLogic
 
--- | A workload: its name, how many operations one run performs, and the
--- action that performs them and forces the result. The action is given a
--- different "salt" on every run and builds its input from it, so that GHC
--- cannot share one run's work with the next and time nothing.
-data Workload = Workload String Int (Int -> IO ())
-
-force :: Either Error Value -> IO ()
-force result = do
-  _ <- evaluate (LBS.length (encode (fromRight Null result)))
-  pure ()
+-- | The size of the encoded answer: forces the whole result, and gives the
+-- benchmark an 'Int' to hold on to.
+size :: Either Error Value -> Int
+size = fromIntegral . LBS.length . encode . fromRight Null
 
 num :: Int -> Value
 num = toJSON
 
-numbers :: Int -> Int -> Value
-numbers salt n = toJSON [salt .. salt + n - 1]
+stringOf :: Int -> Value
+stringOf = String . Text.pack . show
 
-workloads :: [Workload]
+var :: Text.Text -> Value
+var path = object ["var" .= path]
+
+call :: Text.Text -> [Value] -> Value
+call operator operands = object [Key.fromText operator .= operands]
+
+-- | 10,000 numbers, the size the iteration benchmarks run over.
+bigNumbers :: Value
+bigNumbers = toJSON [1 .. 10000 :: Int]
+
+-- | The data every workload is evaluated against. Parts a rule does not
+-- touch are never converted, so a small rule pays nothing for the big array.
+dataFor :: Int -> Value
+dataFor n =
+  object
+    [ "x" .= n
+    , "xs" .= bigNumbers
+    , "a" .= object ["b" .= object ["c" .= object ["d" .= n]]]
+    ]
+
+-- | One custom operator, to price the extension point.
+customOps :: Operators
+customOps = fromRight noOperators (operatorsFromList [(OperatorName "double", doubling)])
+  where
+    doubling _ [Number k] = Right (Number (k * 2))
+    doubling _ _ = Left "expected one number"
+
+-- ---------------------------------------------------------------------
+-- Workloads: each is a rule built from the benchmark's argument
+-- ---------------------------------------------------------------------
+
+workloads :: [(String, Int -> Value)]
 workloads =
-  [ Workload "small rule, apply (1000x)" 1000 $ \salt ->
-      forM_ [1 .. 1000 :: Int] $ \i ->
-        force (apply (object ["+" .= [object ["var" .= ("x" :: String)], num salt]]) (object ["x" .= num i]))
-  , Workload "small rule, compile once then run (1000x)" 1000 $ \salt ->
-      case compile defaultConfig (object ["+" .= [object ["var" .= ("x" :: String)], num salt]]) of
-        Left _ -> pure ()
-        Right rule -> forM_ [1 .. 1000 :: Int] $ \i -> force (run noOperators rule (object ["x" .= num i]))
-  , Workload "map over 10,000 elements" 10000 $ \salt ->
-      force (apply (object ["map" .= [numbers salt 10000, object ["*" .= [object ["var" .= ("" :: String)], num 2]]]]) Null)
-  , Workload "filter over 10,000 elements" 10000 $ \salt ->
-      force (apply (object ["filter" .= [numbers salt 10000, object [">" .= [object ["var" .= ("" :: String)], num (salt + 5000)]]]]) Null)
-  , Workload "reduce (sum) over 10,000 elements" 10000 $ \salt ->
-      force
-        ( apply
-            ( object
-                [ "reduce"
-                    .= [ numbers salt 10000
-                       , object ["+" .= [object ["var" .= ("current" :: String)], object ["var" .= ("accumulator" :: String)]]]
-                       , num 0
-                       ]
-                ]
-            )
-            Null
-        )
-  , Workload "cat of 1,000 short strings" 1000 $ \salt ->
-      force (apply (object ["cat" .= replicate 1000 (String (Text.pack (show salt)))]) Null)
-  , Workload "string to number, 200-digit literals (100x)" 100 $ \salt ->
-      forM_ [1 .. 100 :: Int] $ \i ->
-        force (apply (object ["+" .= [String (Text.pack (show (salt + i)) <> Text.replicate 200 "7")]]) Null)
-  , Workload "number printing via cat (1,000 doubles)" 1000 $ \salt ->
-      force (apply (object ["cat" .= map (\i -> toJSON (fromIntegral (i + salt) / 7 :: Double)) [1 .. 1000 :: Int]]) Null)
-  , Workload "nested if, depth 60" 1 $ \salt ->
-      force (apply (foldr (\_ inner -> object ["if" .= [Bool True, inner, num 0]]) (num salt) [1 .. 60 :: Int]) Null)
-  , Workload "var path into nested data (1000x)" 1000 $ \salt ->
-      forM_ [1 .. 1000 :: Int] $ \i ->
-        force (apply (object ["var" .= ("a.b.c.d" :: String)]) (object ["a" .= object ["b" .= object ["c" .= object ["d" .= num (salt + i)]]]]))
-  , Workload "rule that hits the step limit (1x)" 1 $ \salt ->
-      force (apply (object ["+" .= (num salt : replicate 1100000 (num 1))]) Null)
+  [ ("arithmetic: x + n", \n -> call "+" [var "x", num n])
+  , ("short-circuit: and, false first, 1,000 operands", \n -> call "and" (Bool False : num n : replicate 1000 (var "x")))
+  , ("nested if, depth 60", \n -> foldr (\_ inner -> call "if" [Bool True, inner, num 0]) (num n) [1 .. 60 :: Int])
+  , ("var path a.b.c.d", \_ -> var "a.b.c.d")
+  , ("var 50 lookups to the end of a 10,000-element array", \n -> call "+" (num n : replicate 50 (var "xs.9999")))
+  , ("map over 10,000 elements", \n -> call "map" [var "xs", call "*" [var "", num n]])
+  , ("filter over 10,000 elements", \n -> call "filter" [var "xs", call ">" [var "", num (n + 5000)]])
+  , ("reduce (sum) over 10,000 elements", \n -> call "reduce" [var "xs", call "+" [var "current", var "accumulator"], num n])
+  , ("cat of 1,000 short strings", call "cat" . replicate 1000 . stringOf)
+  , ("number printing via cat, 1,000 doubles", \n -> call "cat" (map (\i -> toJSON (fromIntegral (i + n) / 7 :: Double)) [1 .. 1000 :: Int]))
+  , ("string to number, 200-digit literal", \n -> call "+" [String (Text.pack (show n) <> Text.replicate 200 "7")])
+  , ("custom operator, composed twice", \n -> call "double" [call "double" [num n]])
   ]
 
-main :: IO ()
-main = do
-  args <- getArgs
-  let repeats = case args of
-        n : _ | [(k, "")] <- reads n -> max 1 k
-        _ -> 5
-  putStrLn ("jsonlogic-hs benchmarks, best of " ++ show repeats ++ " runs")
-  forM_ workloads $ \(Workload name ops action) -> do
-    times <-
-      mapM
-        ( \salt -> do
-            start <- getMonotonicTime
-            action salt
-            end <- getMonotonicTime
-            pure (end - start)
-        )
-        [1 .. repeats]
-    let best = minimumBy (comparing id) times
-    putStrLn
-      ( pad 48 name
-          ++ pad 14 (show (round (best * 1e6) :: Int) ++ " us")
-          ++ show (fromIntegral (round (best * 1e9 / fromIntegral ops) :: Int) / 1000 :: Double)
-          ++ " us/op"
-      )
+-- ---------------------------------------------------------------------
+-- The four groups
+-- ---------------------------------------------------------------------
+
+oneShot :: (String, Int -> Value) -> Benchmark
+oneShot (name, rule) =
+  bench name (whnf (\n -> size (applyWith customOps (rule n) (dataFor n))) 1)
+
+verdict :: Either Error Rule -> Int
+verdict = either (const 0) (const 1)
+
+compileOnly :: (String, Int -> Value) -> Benchmark
+compileOnly (name, rule) =
+  bench name (whnf (verdict . compile defaultConfig . rule) 1)
+
+-- | The rule is read once, outside the timing loop; only 'run' is timed.
+precompiledRun :: (String, Int -> Value) -> Benchmark
+precompiledRun (name, rule) =
+  bench name (whnf (\n -> maybe 0 (\r -> size (run customOps r (dataFor n))) compiled) 1)
   where
-    pad n s = s ++ replicate (n - length s) ' '
+    compiled = either (const Nothing) Just (compile defaultConfig (rule 0))
+
+-- | 110,000 operands against a limit of 100,000 steps: the cost of being
+-- refused.
+limitHit :: Benchmark
+limitHit =
+  bench "step limit reached, 110,000 operands" $
+    whnf (\n -> size (applyWithConfig defaultConfig{maxSteps = 100000} customOps (call "+" (num n : replicate 110000 (num 1))) Null)) 1
+
+main :: IO ()
+main =
+  defaultMain
+    [ bgroup "one-shot" (map oneShot workloads)
+    , bgroup "compile only" (map compileOnly workloads)
+    , bgroup "precompiled run" (map precompiledRun workloads)
+    , bgroup "limits" [limitHit]
+    ]
