@@ -62,7 +62,7 @@ jobs:
 
       - name: cabal check
         if: matrix.ghc == '9.14.1'
-        run: cabal check
+        run: bash scripts/cabal-check.sh
 
       - name: source distribution builds and tests on its own
         if: matrix.ghc == '9.14.1'
