@@ -13,7 +13,7 @@ It is held to the JavaScript reference implementation,
 tested scores 84.8% (see [How it compares](#how-it-compares)).
 
 Author: Sabrinathan Nair. Licence: MIT LICENSE.
-**Status: release candidate, not yet on Hackage.**
+
 
 | | |
 | --- | --- |
