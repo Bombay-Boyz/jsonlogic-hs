@@ -47,6 +47,7 @@ import System.Exit (exitFailure)
 import System.IO (hPutStrLn, hSetEncoding, stderr, stdout, utf8)
 
 import JsonLogic
+import JsonLogic.Core.Operator (allBuiltins, builtinName)
 
 -- | One fixture case.
 data Case = Case
@@ -168,44 +169,9 @@ reference _ (Object o)
   | Just (String m) <- KeyMap.lookup "error" o = pure (RefError m)
 reference line _ = die' ("line " ++ show line ++ ": bad expectation")
 
+-- | Every builtin operator, from the library's own table.
 builtins :: [String]
-builtins =
-  [ "var"
-  , "missing"
-  , "missing_some"
-  , "if"
-  , "?:"
-  , "and"
-  , "or"
-  , "!"
-  , "!!"
-  , "=="
-  , "==="
-  , "!="
-  , "!=="
-  , "<"
-  , "<="
-  , ">"
-  , ">="
-  , "max"
-  , "min"
-  , "+"
-  , "-"
-  , "*"
-  , "/"
-  , "%"
-  , "map"
-  , "filter"
-  , "reduce"
-  , "all"
-  , "none"
-  , "some"
-  , "merge"
-  , "in"
-  , "cat"
-  , "substr"
-  , "log"
-  ]
+builtins = map (Text.unpack . builtinName) allBuiltins
 
 families :: [String]
 families =
@@ -225,6 +191,7 @@ families =
   , "deep"
   , "wide"
   , "coercion"
+  , "community"
   ]
 
 runCase :: (String -> IO ()) -> (String -> IO ()) -> Case -> IO ()
@@ -240,7 +207,7 @@ runCase bump failWith c
         Nothing -> bump (if caseDev c == Just "inherited" then "inherited" else "lenient-ok")
         Just why -> failWith (describe c "lenient" target lenient why)
       case strict of
-        Left (ParseFailure (ArityMismatch (OperatorName name) accepted given))
+        Left (ParseFailure _ (ArityMismatch (OperatorName name) accepted given))
           | strictRejects c name accepted given -> bump "strict-arity"
           | otherwise ->
               failWith (describe c "strict" target strict "arity rejection that the operator's arity does not justify")
@@ -251,7 +218,7 @@ runCase bump failWith c
 -- | Is a strict-mode arity rejection justified: is the argument count
 -- really outside what the operator takes?
 strictRejects :: Case -> Text -> Arity -> Int -> Bool
-strictRejects c _ accepted given = caseFam c `elem` ["flow", "arity", "unary", "pair", "triple", "collection"] && outside
+strictRejects c _ accepted given = caseFam c `elem` ["flow", "arity", "unary", "pair", "triple", "collection", "community"] && outside
   where
     outside = case accepted of
       Exactly k -> given /= k
@@ -271,10 +238,11 @@ judge (RefError message) (Left e)
 -- | The reference's error, by what it was, against the library's.
 classOf :: Text -> Error -> Bool
 classOf message e = case e of
-  EvalFailure (UnknownOperator _) ->
+  EvalFailure _ (UnknownOperator _) ->
     "Unrecognized operation" `isInfixOf` m || "apply is not a function" `isInfixOf` m
-  EvalFailure (InvalidOperand _) -> "Cannot read properties" `isInfixOf` m
-  ParseFailure (ArityMismatch (OperatorName "*") _ 0) -> "Reduce of empty array" `isInfixOf` m
+  EvalFailure _ (InvalidOperand (OperatorName "*")) -> "Reduce of empty array" `isInfixOf` m
+  EvalFailure _ (InvalidOperand _) -> "Cannot read properties" `isInfixOf` m
+  ParseFailure _ (ArityMismatch (OperatorName "*") _ 0) -> "Reduce of empty array" `isInfixOf` m
   _ -> False
   where
     m = Text.unpack message

@@ -1,6 +1,12 @@
-# Dead-code detection (Standard 1.11). A definition is live if it can be
-# reached from the public JsonLogic module, from a test or benchmark or
-# other executable's main, or from an instance. Everything else, including
-# an export of a JsonLogic.Core.* module that nothing uses, is reported.
-roots = [ "^Main\\.main$", "^JsonLogic\\.[^.]+$" ]
+# Dead-code detection (Standard 1.11), blocking in CI (scripts/weeder.sh).
+#
+# A definition is live if it can be reached from the supported API (everything
+# the JsonLogic module exports, including what it re-exports from
+# JsonLogic.Core.*), from the main of a test suite, benchmark or other
+# executable, or from an instance. Everything else, including an export of a
+# JsonLogic.Core.* module that nothing uses, is reported, and so is an unused
+# type.
+roots = [ "^Main\\.main$" ]
+root-modules = [ "^JsonLogic$" ]
 type-class-roots = true
+unused-types = true

@@ -32,10 +32,12 @@ data Config = Config
   -- ^ How deeply a rule (and any literal inside it, and any value a custom
   -- operator returns) may nest. Default 64.
   , maxSteps :: !Int
-  -- ^ How many evaluation steps one evaluation may take. A step is one
-  -- rule node evaluated, one iteration of @map@, @filter@, @reduce@,
-  -- @all@, @some@ or @none@, or one element or character built by @cat@ or
-  -- @merge@. Default 1,000,000.
+  -- ^ How many evaluation steps one run may take. A step is one rule node
+  -- evaluated (so each iteration of @map@ and the others costs the nodes of
+  -- its body), plus one per array element converted to a string or number,
+  -- per code unit or element built by @cat@ or @merge@, per code point of a
+  -- string a path indexes or measures, and per node of a custom operator's
+  -- result (docs/LIMITS.md). Default 1,000,000.
   , maxStringLength :: !Int
   -- ^ The longest string @cat@ may build, in UTF-16 code units. Default
   -- 1,048,576.

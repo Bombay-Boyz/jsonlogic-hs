@@ -105,14 +105,14 @@ verdict = either (const 0) (const 1)
 
 compileOnly :: (String, Int -> Value) -> Benchmark
 compileOnly (name, rule) =
-  bench name (whnf (verdict . compile defaultConfig . rule) 1)
+  bench name (whnf (verdict . compile defaultConfig customOps . rule) 1)
 
 -- | The rule is read once, outside the timing loop; only 'run' is timed.
 precompiledRun :: (String, Int -> Value) -> Benchmark
 precompiledRun (name, rule) =
-  bench name (whnf (\n -> maybe 0 (\r -> size (run customOps r (dataFor n))) compiled) 1)
+  bench name (whnf (\n -> maybe 0 (\r -> size (run r (dataFor n))) compiled) 1)
   where
-    compiled = either (const Nothing) Just (compile defaultConfig (rule 0))
+    compiled = either (const Nothing) Just (compile defaultConfig customOps (rule 0))
 
 -- | 110,000 operands against a limit of 100,000 steps: the cost of being
 -- refused.

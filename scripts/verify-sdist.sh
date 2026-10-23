@@ -8,8 +8,9 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 REPO=$(pwd)
 
+VERSION=$(awk '/^version:/ {print $2; exit}' jsonlogic-hs.cabal)
 cabal sdist
-TARBALL=$(ls -t dist-newstyle/sdist/jsonlogic-hs-*.tar.gz | head -n 1)
+TARBALL="dist-newstyle/sdist/jsonlogic-hs-$VERSION.tar.gz"
 echo "tarball: $TARBALL ($(wc -c < "$TARBALL") bytes)"
 
 # Read the listing once: piping tar straight into `grep -q` makes tar die of a
@@ -20,7 +21,7 @@ echo "--- contents ---"
 echo "$LISTING"
 
 echo "--- required files ---"
-for f in LICENSE README.md CHANGELOG.md jsonlogic-hs.cabal src/JsonLogic.hs test/tests.json; do
+for f in LICENSE README.md CHANGELOG.md jsonlogic-hs.cabal src/JsonLogic.hs test/tests.json test/outliers.jsonl test/community/index.json test/community/expected.json test/community/LICENSE; do
   if grep -q "/$f\$" <<< "$LISTING"; then
     echo "present: $f"
   else
@@ -32,7 +33,7 @@ done
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 tar -xzf "$TARBALL" -C "$WORK"
-cd "$WORK"/jsonlogic-hs-*/
+cd "$WORK/jsonlogic-hs-$VERSION"
 
 echo "--- building from the tarball, with the package's default flags ---"
 cabal build all --enable-tests

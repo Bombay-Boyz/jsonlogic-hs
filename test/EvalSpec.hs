@@ -12,7 +12,9 @@ import Test.QuickCheck (Gen, choose, forAll, listOf, oneof)
 
 import JsonLogic hiding (Rule)
 import JsonLogic.Core.Eval (evaluate)
-import JsonLogic.Core.Rule (Rule, RuleF (..))
+import JsonLogic.Core.Location (root)
+import JsonLogic.Core.Rule (Node (..), Rule, RuleF (..))
+import Support (Problem (..), at, problem)
 
 -- | Test cases are written with single quotes so the JSON stays readable.
 q :: LBS.ByteString -> LBS.ByteString
@@ -180,11 +182,15 @@ genJson = oneof [scalar, toJSON <$> listOf scalar]
         , String . Text.pack <$> listOf (choose ('a', 'z'))
         ]
 
+-- | A node built by hand, at the root (the laws do not look at locations).
+node :: RuleF Rule -> Rule
+node = Fix . Node root
+
 lit :: Value -> Rule
-lit = Fix . Lit
+lit = node . Lit
 
 result :: Rule -> Either EvalError Value
-result rule = evaluate rule Null
+result rule = either (Left . snd) Right (evaluate rule Null)
 
 spec :: Spec
 spec = describe "evaluation" $ do
@@ -192,18 +198,28 @@ spec = describe "evaluation" $ do
     mapM_ (\(rule, input, expected) -> it (label rule input) (evaluates rule input expected)) cases
 
   describe "errors" $ do
-    it "reports an unknown operator" $
+    it "reports an unknown operator, where it is" $
       withJson "{'nope':[1]}" $ \rule ->
-        apply rule Null `shouldBe` Left (EvalFailure (UnknownOperator (OperatorName "nope")))
+        apply rule Null `shouldBe` Left (EvalFailure root (UnknownOperator (OperatorName "nope")))
     it "evaluates arguments before the operator, so a bad one still fails" $
       withJson "{'+':[1,{'nope':[]}]}" $ \rule ->
-        apply rule Null `shouldBe` Left (EvalFailure (UnknownOperator (OperatorName "nope")))
-    it "surfaces parse errors" $
-      withJson "{'==':[1]}" $ \rule ->
+        apply rule Null `shouldBe` Left (EvalFailure (at [Left "+", Right 1]) (UnknownOperator (OperatorName "nope")))
+    it "locates a failure inside an iteration body" $
+      withJson "{'map':[[1],{'nope':[]}]}" $ \rule ->
+        apply rule Null `shouldBe` Left (EvalFailure (at [Left "map", Right 1]) (UnknownOperator (OperatorName "nope")))
+    it "surfaces parse errors, with their location" $
+      withJson "{'!':{'==':[1]}}" $ \rule ->
         apply rule Null
-          `shouldBe` Left (ParseFailure (ArityMismatch (OperatorName "==") (Exactly 2) 1))
+          `shouldBe` Left (ParseFailure (at [Left "!"]) (ArityMismatch (OperatorName "==") (Exactly 2) 1))
     it "rejects rules nested past the depth limit before evaluating" $
-      apply (nested 65) Null `shouldBe` Left (ParseFailure (DepthExceeded 64))
+      problem (apply (nested 65) Null) `shouldBe` Left (ParseProblem (DepthExceeded 64))
+    it "renders an error with its JSON Pointer" $ do
+      renderError (EvalFailure (at [Left "if", Right 1]) (UnknownOperator (OperatorName "x")))
+        `shouldBe` "at /if/1: unknown operator \"x\""
+      renderError (EvalFailure root (UnknownOperator (OperatorName "x")))
+        `shouldBe` "at the root of the rule: unknown operator \"x\""
+    it "escapes ~ and / in a pointer, as RFC 6901 requires" $
+      renderLocation (at [Left "a/b", Left "c~d", Right 3]) `shouldBe` "/a~1b/c~0d/3"
 
   describe "custom operators" $ do
     it "runs a supplied operator on evaluated arguments" $
@@ -213,26 +229,26 @@ spec = describe "evaluation" $ do
     it "reports the operator's own failure" $
       withJson "{'double':['a']}" $ \rule ->
         applyWith doubling rule Null
-          `shouldBe` Left (EvalFailure (CustomOperatorFailed (OperatorName "double") "expected one number"))
+          `shouldBe` Left (EvalFailure root (CustomOperatorFailed (OperatorName "double") "expected one number"))
 
   describe "laws" $ do
     it "De Morgan: not (x and y) agrees with (not x) or (not y)" $
       forAll genJson $ \x -> forAll genJson $ \y ->
-        result (Fix (Not (Fix (And [lit x, lit y]))))
-          == result (Fix (Or [Fix (Not (lit x)), Fix (Not (lit y))]))
+        result (node (Not (node (And [lit x, lit y]))))
+          == result (node (Or [node (Not (lit x)), node (Not (lit y))]))
     it "!! is not-not" $
       forAll genJson $ \x ->
-        result (Fix (Cast (lit x))) == result (Fix (Not (Fix (Not (lit x)))))
+        result (node (DoubleNot (lit x))) == result (node (Not (node (Not (lit x)))))
     it "!! is idempotent" $
       forAll genJson $ \x ->
-        result (Fix (Cast (Fix (Cast (lit x))))) == result (Fix (Cast (lit x)))
+        result (node (DoubleNot (node (DoubleNot (lit x))))) == result (node (DoubleNot (lit x)))
     it "if with a true condition is its consequent" $
       forAll genJson $ \a -> forAll genJson $ \b ->
-        result (Fix (If [lit (Bool True), lit a, lit b])) == result (lit a)
+        result (node (If [lit (Bool True), lit a, lit b])) == result (lit a)
     it "if with a false condition is its alternative" $
       forAll genJson $ \a -> forAll genJson $ \b ->
-        result (Fix (If [lit (Bool False), lit a, lit b])) == result (lit b)
+        result (node (If [lit (Bool False), lit a, lit b])) == result (lit b)
     it "a one-operand and / or is that operand" $
       forAll genJson $ \x ->
-        result (Fix (And [lit x])) == result (lit x)
-          && result (Fix (Or [lit x])) == result (lit x)
+        result (node (And [lit x])) == result (lit x)
+          && result (node (Or [lit x])) == result (lit x)

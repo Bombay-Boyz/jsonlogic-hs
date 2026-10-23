@@ -283,7 +283,9 @@ genArith :: Ctx -> Int -> Gen Value
 genArith ctx depth =
   frequency
     [ (3, call "+" <$> genArgs ctx depth 0 3)
-    , (2, call "*" <$> genArgs ctx depth 1 3)
+    , -- zero operands too: the reference throws on an empty @*@ only when
+      -- it is evaluated, so one in an untaken branch must not fail the rule
+      (2, call "*" <$> genArgs ctx depth 0 3)
     , (2, call "-" <$> genArgs ctx depth 1 2)
     , (2, call <$> elements ["/", "%"] <*> genArgs ctx depth 2 2)
     , (2, call <$> elements ["max", "min"] <*> genArgs ctx depth 0 3)
@@ -436,7 +438,7 @@ answers (rule, input) =
 judge :: Reference -> Ours -> Maybe String
 judge expected ours = case (judgeOne expected (lenientAnswer ours), strictAnswer ours) of
   (Just why, _) -> Just ("lenient: " ++ why)
-  (Nothing, Left (ParseFailure (ArityMismatch{}))) -> Nothing
+  (Nothing, Left (ParseFailure _ ArityMismatch{})) -> Nothing
   (Nothing, strictResult) -> ("strict: " ++) <$> judgeOne expected strictResult
 
 judgeOne :: Reference -> Either Error Value -> Maybe String
@@ -453,9 +455,9 @@ judgeOne (ReferenceError message) (Left e) = case errorClass e of
 
 -- | The messages the reference gives for each class of library error.
 errorClass :: Error -> Maybe [String]
-errorClass (EvalFailure (UnknownOperator _)) = Just ["Unrecognized operation", "apply is not a function"]
-errorClass (EvalFailure (InvalidOperand _)) = Just ["Cannot read properties"]
-errorClass (ParseFailure (ArityMismatch (OperatorName "*") _ 0)) = Just ["Reduce of empty array"]
+errorClass (EvalFailure _ (UnknownOperator _)) = Just ["Unrecognized operation", "apply is not a function"]
+errorClass (EvalFailure _ (InvalidOperand (OperatorName "*"))) = Just ["Reduce of empty array"]
+errorClass (EvalFailure _ (InvalidOperand _)) = Just ["Cannot read properties"]
 errorClass _ = Nothing
 
 json :: Value -> String

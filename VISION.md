@@ -8,6 +8,14 @@ disagree, **the Standard wins** — this document has already been corrected
 against it once (§4, §7 below); any future disagreement discovered during
 implementation is resolved the same way, not by amending the Standard.
 
+> **Reading this document.** Sections 1 to 10 are the original design. The
+> decision log (§11) is append-only, and its latest revision wins wherever it
+> and an earlier section disagree: in particular, the fold and unfold now come
+> from `data-fix` rather than `recursion-schemes`, `deriving-compat` is gone,
+> the licence is MIT, and the community suite is measured, not ignored
+> (§11, revision 2026-10-22). The code, `docs/COMPATIBILITY.md` and
+> `docs/ARCHITECTURE.md` describe what is true now.
+
 ---
 
 ## 1. What this project is
@@ -478,6 +486,48 @@ be revisited deliberately rather than rediscovered.
   replays them offline. The conformance runner is a gate and cannot pass by
   running nothing.
 
+### Revision 2026-10-22 (audit follow-up). Supersedes the entries above where they differ.
+
+- **Licence: MIT.** The `MITLicense` commit chose MIT; the cabal file and
+  `LICENSE` said so, but the README and the status log below still said
+  MPL-2.0. The README is corrected and `LICENSE` has its real copyright line.
+- **Lenient mode no longer rejects an empty `*` when it is read.** The
+  reference throws on `{"*": []}` only when it evaluates it, so
+  `{"if": [true, 1, {"*": []}]}` is `1`. `Mul` holds a plain list; lenient mode
+  keeps an empty one, which fails with `InvalidOperand "*"` if reached; strict
+  mode still refuses it as an `ArityMismatch`. This replaces "both modes
+  reject `*` with no operands" and the `NonEmpty` reasoning in §10.
+- **One table of builtins.** `JsonLogic.Core.Operator` is a `Bounded`
+  enumeration with each operator's name; every other list (parser, registry,
+  generators, outlier runner) is derived from it. Each operator's operand
+  shape (strict arity, positional operands, whether surplus operands are
+  evaluated) is stated once, in `Parse.shapeOf`, and drives both arity modes.
+- **`data-fix` instead of `recursion-schemes`.** `unfoldFixM` and `foldFix`
+  are exactly the unfold and fold this project needs, from the library that
+  already provides `Fix`. `recursion-schemes` (and its transitive
+  dependencies) and the local `anaM` are gone (ADR 0002 superseded). `Eq1` and
+  `Show1` are written with `Foldable` and the derived instances, so
+  `deriving-compat` and Template Haskell are gone too.
+- **A real compile step.** `compile :: Config -> Operators -> Value` builds the
+  evaluator once (the fold's carrier is still a function of the datum) and
+  resolves custom operators then; `run` only runs it. Literal `var` paths are
+  split at compile time.
+- **Errors carry locations.** Every node records its JSON Pointer (RFC 6901)
+  when it is read; `ParseFailure` and `EvalFailure` carry the location of the
+  node that failed. Implements ADR 0006's plan before the first release, so
+  the stable error API never existed without locations.
+- **Arrays are `Vector`s; numbers are converted with published algorithms.**
+  Clinger's fast path and an exact integer quotient for reading; Ryū for
+  writing (checked against the exact algorithm and against V8). An array index
+  is now constant time and costs no steps; `docs/LIMITS.md` is updated.
+- **The community suite is measured and pinned** (`test/community/`,
+  `jsonlogic-hs-community`), and every one of its rules is an outlier case
+  held to json-logic-js. This keeps §2's decision (the classic dialect is the
+  product) while making the gap to the 2.0 dialect a number that can only
+  change on purpose.
+- **`dataUse`.** A scope-aware version of the reference's `uses_data`, with
+  a tested guarantee (`JsonLogic.Core.Analysis`).
+
 ## 12. Status log
 
 - **2026-10-13: phases 0 to 5 complete.** Scaffold, `RuleF`, depth-bounded
@@ -581,3 +631,13 @@ be revisited deliberately rather than rediscovered.
   number-printing tie rule, linear-time numeric parsing, checked custom
   operator registries, API facade (`compile`, `run`, `Config`), and CI with
   SHA-pinned actions. See CHANGELOG.md and docs/COMPATIBILITY.md.
+- **2026-10-22: audit follow-up.** Every finding of the external audit is
+  closed: licence text, `cabal check` (the benchmark's `-O2`), the weeder job
+  (it never found its `.hie` files), lenient `*`, the four copies of the
+  operator list, stale design notes in the source, the dependency on
+  `recursion-schemes` and Template Haskell, compile-once, error locations,
+  speed, and the community suite. Classic suite 278/278; outliers 26,980
+  cases (including the 913 community rules); community score lenient 782/1138
+  (the same, file for file, as json-logic-js) and strict 839/1138; unit and
+  property tests 278 examples; weeder, hlint, fourmolu, shellcheck and
+  actionlint clean; builds without warnings on GHC 9.6.7 and 9.14.1.

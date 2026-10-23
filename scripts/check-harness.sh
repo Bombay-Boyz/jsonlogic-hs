@@ -10,8 +10,8 @@
 # what differential/outliers.js generates (needs Node and `npm ci` in
 # differential/; skipped with a notice if Node is absent unless CI is set).
 #
-# Binaries are found with `cabal list-bin`; override with CONFORMANCE_BIN and
-# OUTLIERS_BIN.
+# Binaries are found with `cabal list-bin`; override with CONFORMANCE_BIN,
+# OUTLIERS_BIN and COMMUNITY_BIN.
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 ROOT=$(pwd)
@@ -19,10 +19,12 @@ ROOT=$(pwd)
 bin() { # name
   if [ "$1" = conformance ] && [ -n "${CONFORMANCE_BIN:-}" ]; then echo "$CONFORMANCE_BIN"; return; fi
   if [ "$1" = outliers ] && [ -n "${OUTLIERS_BIN:-}" ]; then echo "$OUTLIERS_BIN"; return; fi
+  if [ "$1" = community ] && [ -n "${COMMUNITY_BIN:-}" ]; then echo "$COMMUNITY_BIN"; return; fi
   cabal build -v0 "test:jsonlogic-hs-$1" >&2 && cabal list-bin "test:jsonlogic-hs-$1"
 }
 CONF=$(bin conformance) || { echo "cannot build the conformance runner"; exit 1; }
 OUT=$(bin outliers) || { echo "cannot build the outlier runner"; exit 1; }
+COMM=$(bin community) || { echo "cannot build the community runner"; exit 1; }
 
 failures=0
 expect_fail() { # description, command...
@@ -92,6 +94,25 @@ meta["meta"]["cases"] = len(body)
 open(sys.argv[2], "w", encoding="utf-8").write(json.dumps(meta, separators=(",", ":")) + "\n" + "\n".join(body) + "\n")
 PY
 expect_fail "outliers: an operator with no cases" "$OUT" "$tmp/nocover.jsonl"
+
+# community: it reads test/community/ relative to the working directory
+if "$COMM" >/dev/null 2>&1; then echo "ok:   community score matches expected.json"; else echo "FAIL: community score differs on the real suite"; failures=$((failures + 1)); fi
+run_comm() { (cd "$tmp/c" && "$COMM"); }
+fresh_comm() { rm -rf "$tmp/c" && mkdir -p "$tmp/c/test" && cp -r "$ROOT/test/community" "$tmp/c/test/community"; }
+fresh_comm; rm "$tmp/c/test/community/index.json"
+expect_fail "community: index missing" run_comm
+fresh_comm; echo '[]' > "$tmp/c/test/community/truthiness.json"
+expect_fail "community: a suite file with no cases" run_comm
+fresh_comm; python3 - "$tmp/c/test/community/expected.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1])); d["truthiness.json"]["lenient"] += 1; json.dump(d, open(sys.argv[1], "w"))
+PY
+expect_fail "community: a changed pinned score" run_comm
+fresh_comm; python3 - "$tmp/c/test/community/expected.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1])); del d["val.json"]; json.dump(d, open(sys.argv[1], "w"))
+PY
+expect_fail "community: a suite file missing from expected.json" run_comm
 
 # the committed fixture is what the generator writes
 if command -v node >/dev/null 2>&1 && [ -d differential/node_modules/json-logic-js ]; then

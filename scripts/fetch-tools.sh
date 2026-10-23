@@ -16,6 +16,16 @@ verify() { # file, expected sha256
   echo "$2  $1" | sha256sum -c - >/dev/null || { echo "checksum mismatch for $1" >&2; rm -f "$1"; exit 1; }
 }
 
+case "$(uname -s)-$(uname -m)" in
+  Linux-x86_64) ;;
+  *)
+    echo "fetch-tools.sh downloads Linux x86_64 binaries only; this is $(uname -s)-$(uname -m)." >&2
+    echo "Build hlint ${HLINT_VERSION} and fourmolu ${FOURMOLU_VERSION} yourself and run:" >&2
+    echo "  HLINT=/path/to/hlint FOURMOLU=/path/to/fourmolu bash scripts/lint.sh" >&2
+    exit 2
+    ;;
+esac
+
 mkdir -p .tools
 
 if [ ! -x .tools/fourmolu ]; then

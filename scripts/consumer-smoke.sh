@@ -10,14 +10,15 @@ set -euo pipefail
 cd "$(dirname "$0")/.." || exit 1
 root=$(pwd)
 
+version=$(awk '/^version:/ {print $2; exit}' jsonlogic-hs.cabal)
+package="jsonlogic-hs-$version"
 cabal sdist -v0
-tarball=$(ls "$root"/dist-newstyle/sdist/jsonlogic-hs-*.tar.gz | head -n 1)
-[ -f "$tarball" ] || { echo "no source distribution was produced" >&2; exit 1; }
+tarball="$root/dist-newstyle/sdist/$package.tar.gz"
+[ -f "$tarball" ] || { echo "no source distribution was produced at $tarball" >&2; exit 1; }
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 tar -xzf "$tarball" -C "$work"
-package=$(basename "$(ls -d "$work"/jsonlogic-hs-*/ | head -n 1)")
 cp -r consumer "$work/consumer"
 
 {

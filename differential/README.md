@@ -25,8 +25,8 @@ part of `cabal test`, which must work without Node.
 ## The outlier catalogue
 
 ```
-node outliers.js ../test/outliers.jsonl              # write the committed sample (about 26,000 cases)
-OUTLIER_TIER=full node outliers.js /tmp/full.jsonl   # the whole catalogue (about 138,000 cases)
+node outliers.js ../test/outliers.jsonl              # write the committed sample (about 27,000 cases)
+OUTLIER_TIER=full node outliers.js /tmp/full.jsonl   # the whole catalogue (about 140,000 cases)
 node outliers.js --check ../test/outliers.jsonl      # fail if the committed file is stale
 cabal run jsonlogic-hs-outliers -- /tmp/full.jsonl   # replay any tier
 ```
@@ -44,8 +44,11 @@ signed zero, NaN and infinity through every operator and observer
 (`signedzero`); UTF-16 length, indexing, `substr`, ordering (`unicode`);
 variable paths on awkward data (`var`); iteration operators over awkward
 collections and bodies (`collection`); control flow and short-circuiting
-(`flow`); a full loose/strict equality and ordering matrix over mixed types
-(`coercion`); literals, deep nesting and very wide rules.
+(`flow`, including an empty `*` in branches that are and are not taken); a
+full loose/strict equality and ordering matrix over mixed types
+(`coercion`); literals, deep nesting and very wide rules; and every rule of
+the community suite in `test/community/` (`community`). The format is
+documented for implementers in other languages in `docs/CONFORMANCE.md`.
 
 Each line is one case: `{"id","fam","op","n","rule","data","expect"}`, where
 `expect` is `{"ok":value}` or `{"error":message}`. The first line is a
@@ -78,8 +81,11 @@ case is written to `differential/out/repro-N.jsonl`, which `--replay`
 re-checks. Every mismatch index is listed in `differential/out/mismatches.txt`.
 
 Cases are compared in lenient arity mode, which models the reference, and
-strict mode must give the same answer unless it rejects the arity. Errors
-are compared by class (unknown operator, invalid operand, empty `*`); a
+strict mode must give the same answer unless it rejects the arity. The
+generator produces every operator at every operand count it accepts,
+including an empty `*`, which the reference throws on only when it evaluates
+it. Errors are compared by class (unknown operator, invalid operand, empty
+`*`); a
 reference error of any other kind fails the run, so a new kind of failure
 cannot pass unnoticed.
 

@@ -165,6 +165,8 @@ const PAIR_OPS = [
   "all", "none", "some", "reduce",
 ];
 const TRIPLE_OPS = ["<", "<=", "substr", "if", "and", "or", "reduce", "cat", "+", "max", "*", "var", "-"];
+// Every builtin operator. It must be the set in src/JsonLogic/Core/Operator.hs:
+// the Haskell runner fails if any builtin there has too few cases here.
 const ALL_OPS = [
   "var", "missing", "missing_some", "if", "?:", "and", "or", "!", "!!", "==", "===", "!=", "!==",
   "<", "<=", ">", ">=", "max", "min", "+", "-", "*", "/", "%", "map", "filter", "reduce", "all",
@@ -375,6 +377,10 @@ for (const a of COLLECTIONS) for (const b of COLLECTIONS) {
 
 // 11. Control flow, short-circuit, unknown operators in untaken branches.
 const BAD = { nonexistent: [] };
+// The reference throws on an empty * only when it is evaluated
+// ("Reduce of empty array with no initial value"), so in an untaken branch it
+// is harmless.
+const EMPTY_MUL = { "*": [] };
 const FLOW = [
   op("if", true, 1, BAD), op("if", false, BAD, 2), op("if", false, BAD), op("if", true, 1, BAD, BAD),
   op("if", false, 1, true, 2, BAD), op("if", false, 1, false, 2, 3), op("if", false, 1, false, 2),
@@ -442,6 +448,38 @@ const TYPED = [
 for (const a of TYPED) for (const b of TYPED) {
   for (const o of ["==", "===", "!=", "!==", "<", "<=", ">", ">=", "+", "-", "*", "/", "%", "in", "cat", "max", "min", "substr"]) {
     add("coercion", o, 2, op(o, a, b), null);
+  }
+}
+
+// 14. Control flow over an operand the reference throws on only when it
+// evaluates it (an empty *), in branches that are and are not taken. Last, so
+// that adding it left the ids of every earlier case unchanged.
+const LAZY_THROW = [
+  op("if", true, 1, EMPTY_MUL), op("if", false, EMPTY_MUL, 2), op("if", EMPTY_MUL, 1, 2),
+  op("or", 1, EMPTY_MUL), op("or", 0, EMPTY_MUL), op("and", 0, EMPTY_MUL), op("and", 1, EMPTY_MUL),
+  op("?:", true, 1, EMPTY_MUL), op("map", [], EMPTY_MUL), op("map", [1], EMPTY_MUL),
+  op("filter", [], EMPTY_MUL), op("all", [], EMPTY_MUL), op("some", [], EMPTY_MUL), op("none", [], EMPTY_MUL),
+  op("reduce", [], EMPTY_MUL, 0), op("reduce", [1], EMPTY_MUL, 0), op("+", 1, EMPTY_MUL), op("==", EMPTY_MUL, 1),
+];
+for (const f of LAZY_THROW) add("flow", "mixed", 0, f, { a: 1 });
+for (const f of LAZY_THROW) add("flow", "mixed", 0, [f, f], { a: 1 });
+for (const f of LAZY_THROW) add("flow", "mixed", 0, { "cat": [f, "x"] }, { a: 1 });
+
+// 15. Every rule of the community test suite (test/community, from
+// json-logic/compat-tables), with the reference's own answers. Most of the
+// suite is written for the JSON Logic 2.0 dialect; what matters here is only
+// that lenient mode answers each rule as json-logic-js does.
+{
+  const path = require("path");
+  const dir = path.join(__dirname, "..", "test", "community");
+  for (const file of JSON.parse(fs.readFileSync(path.join(dir, "index.json"), "utf8"))) {
+    for (const entry of JSON.parse(fs.readFileSync(path.join(dir, file), "utf8"))) {
+      if (entry === null || typeof entry !== "object") continue;
+      const rule = entry.rule;
+      const name = rule !== null && typeof rule === "object" && !Array.isArray(rule) && Object.keys(rule).length === 1
+        ? Object.keys(rule)[0] : "lit";
+      add("community", name, 0, rule, entry.data === undefined ? null : entry.data);
+    }
   }
 }
 

@@ -17,13 +17,14 @@ applyWithConfig defaultConfig {maxSteps = 10000, maxStringLength = 4096} noOpera
 
 | Limit | Default | Counted in | Error |
 | --- | --- | --- | --- |
-| `maxDepth` | 64 | levels of nesting of the rule, of any literal in it, and of a custom operator's result | `ParseFailure (DepthExceeded n)` or `EvalFailure (LimitExceeded (ValueDepthLimit n))` |
-| `maxSteps` | 1,000,000 | see below | `EvalFailure (LimitExceeded (StepLimit n))` |
-| `maxStringLength` | 1,048,576 | UTF-16 code units, the longest string `cat` builds | `LimitExceeded (StringLimit n)` |
-| `maxArrayLength` | 100,000 | elements, the longest array `merge` builds and the longest `map` or `filter` iterates | `LimitExceeded (ArrayLimit n)` |
+| `maxDepth` | 64 | levels of nesting of the rule, of any literal in it, and of a custom operator's result | `ParseFailure _ (DepthExceeded n)` or `EvalFailure _ (LimitExceeded (ValueDepthLimit n))` |
+| `maxSteps` | 1,000,000 | see below | `EvalFailure _ (LimitExceeded (StepLimit n))` |
+| `maxStringLength` | 1,048,576 | UTF-16 code units, the longest string `cat` builds | `EvalFailure _ (LimitExceeded (StringLimit n))` |
+| `maxArrayLength` | 100,000 | elements, the longest array `merge` builds and the longest `map` or `filter` iterates | `EvalFailure _ (LimitExceeded (ArrayLimit n))` |
 
 Each limit is exact: a rule that needs exactly the limit succeeds and one
-more fails, and the tests check both sides of every boundary.
+more fails, and the tests check both sides of every boundary. The `_` in each
+error is the location of the node that hit the limit.
 
 ## What a step is
 
@@ -31,10 +32,10 @@ A step is one rule node evaluated, plus: one extra step per element of an
 array operand that an operator converts to a string or number (so comparing a
 big array a thousand times is paid for), one per element or code unit that
 `cat` or `merge` builds, and one per node of a value a custom operator
-returns. Walking a path into the data is paid for too: a `var`, `missing`
-or `missing_some` path costs one step per array element it passes over and
-one per code point of a string it indexes or measures, so a lookup into a
-large array is charged for the work it does. Iteration (`map`, `filter`, `reduce`, `all`, `some`, `none`) is
+returns. Walking a path into the data is paid for where it is not constant time: a
+`var`, `missing` or `missing_some` path costs one step per code point of a
+string it indexes or measures. Object keys, array indices and array lengths
+are constant time and cost nothing extra. Iteration (`map`, `filter`, `reduce`, `all`, `some`, `none`) is
 charged through the nodes its body evaluates. Because building a result costs
 steps in proportion to its size, the total work of an evaluation is bounded
 by `maxSteps` up to a constant factor, even for rules designed to amplify
@@ -60,11 +61,13 @@ under a second.
 
 ## Cost
 
-The limits are not free. Against the previous version, on one machine,
-iteration-heavy rules (`map`, `filter`, `reduce` over 10,000 elements) take
-roughly 15 to 45 per cent longer, and a tiny rule applied once takes about
-twice as long (about 2 microseconds instead of 1). To apply one rule many
-times, `compile` it once and `run` it: that skips reading it again.
+The limits are cheap. Every node costs one counter decrement, and the work
+that is charged in proportion to size is work that is done anyway. On one
+machine (`bench/Bench.hs`, `run` of a compiled rule): `map` or `filter` over
+10,000 elements takes about 2 ms, `reduce` about 3 ms, and a small rule well
+under a microsecond. To apply one rule many times, `compile` it once and
+`run` it: reading and compiling happen once.
 
-`cabal run jsonlogic-hs-bench` (build with `-f bench`) times a fixed set of
-workloads; compare two runs on the same machine.
+`bash scripts/bench.sh` times a fixed set of workloads and records the
+environment; compare two runs on the same machine only
+(`bench/README.md`).

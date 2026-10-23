@@ -9,7 +9,13 @@ import qualified Data.Text as Text
 import Test.Hspec
 import Test.QuickCheck (Gen, arbitrary, choose, elements, forAll, listOf, oneof, (==>))
 
+import qualified Data.Vector as Vector
+
+import JsonLogic.Core.Number (maximumJs, minimumJs, numberToString, remainderJs)
 import JsonLogic.Core.Value
+
+arr :: [Val] -> Val
+arr = VArr . Vector.fromList
 
 nan :: Double
 nan = 0 / 0
@@ -28,7 +34,7 @@ genScalar =
     ]
 
 genVal :: Gen Val
-genVal = oneof [genScalar, VArr <$> listOf genScalar, pure (VObj KeyMap.empty)]
+genVal = oneof [genScalar, arr <$> listOf genScalar, pure (VObj KeyMap.empty)]
 
 numberCases :: [(Double, Text)]
 numberCases =
@@ -66,8 +72,8 @@ toNumberCases =
   , (VStr "-2.5", -2.5)
   , (VNull, 0)
   , (VBool True, 1)
-  , (VArr [], 0)
-  , (VArr [VNum 7], 7)
+  , (arr [], 0)
+  , (arr [VNum 7], 7)
   , (VStr "Infinity", infinity)
   , (VStr "-Infinity", negate infinity)
   , (VStr "-2.2531e+21", -2.2531e21)
@@ -85,7 +91,7 @@ parseFloatCases =
   , (VStr "1e3x", 1000)
   , (VStr ".5", 0.5)
   , (VStr "-12.5e1", -125)
-  , (VArr [VNum 5], 5)
+  , (arr [VNum 5], 5)
   , (VNum (-0.0), 0)
   , (VStr "Infinityx", infinity)
   ]
@@ -101,10 +107,10 @@ looseCases =
   , (VBool False, VStr "0", True)
   , (VStr "a", VStr "a", True)
   , (VStr "abc", VNum 0, False)
-  , (VArr [VNum 1], VStr "1", True)
-  , (VArr [], VNum 0, True)
-  , (VArr [], VBool False, True)
-  , (VArr [], VArr [], False)
+  , (arr [VNum 1], VStr "1", True)
+  , (arr [], VNum 0, True)
+  , (arr [], VBool False, True)
+  , (arr [], arr [], False)
   , (VNum nan, VNum nan, False)
   , (VUndefined, VNull, True)
   , (VUndefined, VUndefined, True)
@@ -120,7 +126,7 @@ lessCases =
   , (VNull, VNum 1, True)
   , (VNum nan, VNum 1, False)
   , (VStr "a", VNum 1, False)
-  , (VArr [VNum 1], VArr [VNum 2], True)
+  , (arr [VNum 1], arr [VNum 2], True)
   ]
 
 remainderCases :: [(Double, Double, Double)]
@@ -147,10 +153,10 @@ spec :: Spec
 spec = describe "JsonLogic.Core.Value" $ do
   describe "truthy" $ do
     it "is false for exactly the reference's falsy values" $
-      map truthy [VNull, VUndefined, VBool False, VNum 0, VNum nan, VStr "", VArr []]
+      map truthy [VNull, VUndefined, VBool False, VNum 0, VNum nan, VStr "", arr []]
         `shouldBe` replicate 7 False
     it "is true for everything else, including \"0\" and empty objects" $
-      map truthy [VBool True, VNum 1, VNum (-1), VStr "0", VStr "a", VArr [VNull], VObj KeyMap.empty]
+      map truthy [VBool True, VNum 1, VNum (-1), VStr "0", VStr "a", arr [VNull], VObj KeyMap.empty]
         `shouldBe` replicate 7 True
 
   describe "numberToString"
@@ -171,7 +177,7 @@ spec = describe "JsonLogic.Core.Value" $ do
         , VStr "+-1"
         , VStr "infinity"
         , VObj KeyMap.empty
-        , VArr [VNum 1, VNum 2]
+        , arr [VNum 1, VNum 2]
         ]
         `shouldBe` replicate 9 True
 
@@ -190,7 +196,7 @@ spec = describe "JsonLogic.Core.Value" $ do
       [ strictEquals (VNum 1) (VStr "1")
       , strictEquals (VNum nan) (VNum nan)
       , strictEquals (VStr "a") (VStr "a")
-      , strictEquals (VArr []) (VArr [])
+      , strictEquals (arr []) (arr [])
       ]
         `shouldBe` [False, False, True, False]
 

@@ -2,8 +2,8 @@
 
 **Rule relaxed:** Standard 5.2 bans `error`.
 
-**What is done instead:** `.hlint.yaml` bans it everywhere except three test
-modules (`CompatSpec`, `EvalSpec`, `LimitsSpec`), where small helpers build a
+**What is done instead:** `.hlint.yaml` bans it everywhere except four test
+modules (`CompatSpec`, `EvalSpec`, `LimitsSpec`, and the shared `Support`), where small helpers build a
 rule or an operator registry from a literal in the test and call `error` if the
 literal is malformed.
 

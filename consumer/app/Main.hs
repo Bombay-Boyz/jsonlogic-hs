@@ -34,18 +34,18 @@ checks =
     )
   ,
     ( "compile once, run many"
-    , (compile defaultConfig (json "{\"+\":[{\"var\":\"x\"},1]}") >>= \compiled -> traverse (run noOperators compiled) [json "{\"x\":1}", json "{\"x\":2}"])
+    , (compile defaultConfig noOperators (json "{\"+\":[{\"var\":\"x\"},1]}") >>= \compiled -> traverse (run compiled) [json "{\"x\":1}", json "{\"x\":2}"])
         == Right [Number 2, Number 3]
     )
   ,
-    ( "a step limit is a typed error"
+    ( "a step limit is a typed error, at the node that ran out"
     , applyWithConfig defaultConfig{maxSteps = 2} noOperators (json "{\"+\":[1,1]}") Null
-        == Left (EvalFailure (LimitExceeded (StepLimit 2)))
+        == Left (EvalFailure (fromSegments [Key "+", Index 1]) (LimitExceeded (StepLimit 2)))
     )
   ,
     ( "strict arity names the operator"
     , apply (json "{\"==\":[1]}") Null
-        == Left (ParseFailure (ArityMismatch (OperatorName "==") (Exactly 2) 1))
+        == Left (ParseFailure (fromSegments []) (ArityMismatch (OperatorName "==") (Exactly 2) 1))
     )
   ,
     ( "lenient arity follows the reference"
@@ -57,7 +57,11 @@ checks =
     )
   ,
     ( "an unknown operator is an error, not null"
-    , apply (json "{\"nope\":[1]}") Null == Left (EvalFailure (UnknownOperator (OperatorName "nope")))
+    , apply (json "{\"nope\":[1]}") Null == Left (EvalFailure (fromSegments []) (UnknownOperator (OperatorName "nope")))
+    )
+  ,
+    ( "an error says where it happened, as a JSON Pointer"
+    , either (renderLocation . errorLocation) (const "") (apply (json "{\"if\":[true,{\"nope\":[]}]}") Null) == "/if/1"
     )
   ,
     ( "a custom operator may not shadow a builtin"

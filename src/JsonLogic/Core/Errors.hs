@@ -3,13 +3,13 @@
 -- |
 -- Module      : JsonLogic.Core.Errors
 --
--- The closed error vocabulary of the pipeline, layered by stage
--- (VISION.md §7): reading a rule can fail, evaluating one can fail, and
--- 'Error' is the sum of the two for callers that do both.
+-- The closed error vocabulary, layered by stage: reading a rule can fail
+-- ('ParseError'), evaluating one can fail ('EvalError'), and 'Error' is
+-- either, together with the 'Location' in the rule where it happened.
 --
--- Every constructor is stable public API; callers should match on the
--- constructors, never on rendered text. 'renderError' produces a message
--- for humans and logs, and its wording may change between releases.
+-- Callers match on the constructors, never on rendered text. 'renderError'
+-- produces a message for people and logs; its wording may change in any
+-- release.
 module JsonLogic.Core.Errors
   ( Arity (..)
   , Error (..)
@@ -17,6 +17,7 @@ module JsonLogic.Core.Errors
   , LimitKind (..)
   , OperatorsError (..)
   , ParseError (..)
+  , errorLocation
   , renderError
   , renderEvalError
   , renderParseError
@@ -25,7 +26,8 @@ module JsonLogic.Core.Errors
 import Data.Text (Text)
 import qualified Data.Text as Text
 
-import JsonLogic.Core.Rule (OperatorName (..))
+import JsonLogic.Core.Location (Location, renderLocation)
+import JsonLogic.Core.Operator (OperatorName (..))
 
 -- | How many arguments an operator accepts.
 data Arity
@@ -36,50 +38,49 @@ data Arity
 
 -- | Why a JSON value could not be read as a rule.
 data ParseError
-  = -- | The rule nests deeper than the configured limit (carried here).
-    -- Raised before evaluation ever sees the rule (Standard 2.4, 4.10).
+  = -- | The rule, or a literal inside it, nests deeper than the configured
+    -- limit (carried here). Raised before evaluation ever sees the rule.
     DepthExceeded Int
-  | -- | An operator was given a number of arguments its shape does not
-    -- admit: operator, what it accepts, how many it was given. Only raised
-    -- in strict arity mode, and for @*@ with no operands, which the
-    -- reference also rejects.
+  | -- | An operator was given a number of arguments it does not take:
+    -- the operator, what it accepts, and how many it was given. Raised in
+    -- strict arity mode only.
     ArityMismatch OperatorName Arity Int
   deriving (Eq, Show)
 
--- | Which resource limit stopped an evaluation, with the limit that was
--- configured. The limits bound work and memory, not wall-clock time.
+-- | Which resource limit stopped an evaluation, with the configured
+-- limit. The limits bound work and memory, not wall-clock time.
 data LimitKind
-  = -- | More evaluation steps than allowed. A step is one rule node
-    -- evaluated, one iteration of @map@, @filter@, @reduce@, @all@, @some@
-    -- or @none@, or one element or character produced by @cat@ or @merge@.
+  = -- | More evaluation steps than allowed (see @maxSteps@ in "JsonLogic.Core.Config"
+    -- for what a step is).
     StepLimit Int
-  | -- | A string result longer than allowed (in UTF-16 code units).
+  | -- | A string result longer than allowed, in UTF-16 code units.
     StringLimit Int
-  | -- | An array result longer than allowed.
+  | -- | An array result, or an array to iterate, longer than allowed.
     ArrayLimit Int
-  | -- | A value, such as a custom operator's result, nested deeper than
-    -- allowed.
+  | -- | A value a custom operator returned nests deeper than allowed.
     ValueDepthLimit Int
   deriving (Eq, Show)
 
 -- | Why a well-formed rule could not be evaluated. JavaScript semantics
--- make most odd inputs produce @NaN@ or @null@ rather than fail, so only
--- operators the evaluator was not given, the few operands the reference
--- itself throws on, and exhausted limits can go wrong.
+-- turn most odd inputs into @NaN@ or @null@ rather than a failure, so only
+-- an operator nobody supplied, the few operands the reference itself throws
+-- on, a custom operator's own failure, and an exhausted limit can go wrong.
 data EvalError
-  = -- | A rule used an operator that is neither builtin nor supplied.
+  = -- | The rule reached an operator that is neither builtin nor supplied.
     UnknownOperator OperatorName
   | -- | A supplied operator reported failure, with its reason.
     CustomOperatorFailed OperatorName Text
-  | -- | An operand the reference implementation throws a @TypeError@ on
-    -- (for example @{"missing_some": [1, null]}@), with the operator.
+  | -- | An operand the reference implementation throws a @TypeError@ on:
+    -- @missing_some@ with a @null@ or missing option list, and @*@ with no
+    -- operands at all (reached in lenient arity mode only; strict mode
+    -- rejects it as an 'ArityMismatch' before evaluating).
     InvalidOperand OperatorName
   | -- | A configured resource limit was exceeded.
     LimitExceeded LimitKind
   deriving (Eq, Show)
 
 -- | Why a registry of custom operators was refused. Raised when the
--- registry is built, before any rule is read or evaluated.
+-- registry is built, before any rule is read.
 data OperatorsError
   = -- | The name belongs to a builtin operator, which would shadow it.
     ReservedOperatorName OperatorName
@@ -87,25 +88,45 @@ data OperatorsError
     DuplicateOperatorName OperatorName
   deriving (Eq, Show)
 
--- | Either stage's failure, for callers that parse and evaluate in one go.
+-- | A failure of either stage, and where in the rule it happened.
 data Error
-  = ParseFailure ParseError
-  | EvalFailure EvalError
+  = -- | The rule could not be read. The location is the node that could not
+    -- be read: the operator with the wrong argument count, or the first
+    -- value that nests too deeply.
+    ParseFailure Location ParseError
+  | -- | The rule could not be evaluated. The location is the node being
+    -- evaluated when it failed: the unknown or failing operator, the
+    -- operator given an invalid operand, or the node that ran out of a
+    -- resource.
+    EvalFailure Location EvalError
   deriving (Eq, Show)
 
--- | A one-line description of an error, for logs and messages.
-renderError :: Error -> Text
-renderError (ParseFailure e) = renderParseError e
-renderError (EvalFailure e) = renderEvalError e
+-- | Where an error happened.
+errorLocation :: Error -> Location
+errorLocation (ParseFailure location _) = location
+errorLocation (EvalFailure location _) = location
 
--- | A one-line description of a parse error.
+-- | A one-line description of an error and its location, for logs and
+-- messages.
+--
+-- > at /if/1: operator "*" takes at least 1 argument, but was given 0
+renderError :: Error -> Text
+renderError e = case e of
+  ParseFailure location problem -> at location (renderParseError problem)
+  EvalFailure location problem -> at location (renderEvalError problem)
+  where
+    at location message = case renderLocation location of
+      "" -> "at the root of the rule: " <> message
+      pointer -> "at " <> pointer <> ": " <> message
+
+-- | A one-line description of a parse error, without its location.
 renderParseError :: ParseError -> Text
 renderParseError (DepthExceeded limit) =
-  "rule nests deeper than the limit of " <> shown limit
+  "the rule nests deeper than the limit of " <> shown limit
 renderParseError (ArityMismatch (OperatorName name) accepted given) =
   "operator " <> quoted name <> " takes " <> renderArity accepted <> ", but was given " <> shown given
 
--- | A one-line description of an evaluation error.
+-- | A one-line description of an evaluation error, without its location.
 renderEvalError :: EvalError -> Text
 renderEvalError (UnknownOperator (OperatorName name)) =
   "unknown operator " <> quoted name
@@ -116,7 +137,7 @@ renderEvalError (InvalidOperand (OperatorName name)) =
 renderEvalError (LimitExceeded kind) = case kind of
   StepLimit n -> "evaluation exceeded the limit of " <> shown n <> " steps"
   StringLimit n -> "a string result exceeded the limit of " <> shown n <> " code units"
-  ArrayLimit n -> "an array result exceeded the limit of " <> shown n <> " elements"
+  ArrayLimit n -> "an array exceeded the limit of " <> shown n <> " elements"
   ValueDepthLimit n -> "a value nests deeper than the limit of " <> shown n
 
 renderArity :: Arity -> Text

@@ -16,44 +16,11 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Test.QuickCheck
 
+import JsonLogic.Core.Operator (allBuiltins, builtinName)
+
+-- | Every builtin operator's name, from the library's own table.
 allOperators :: [Text]
-allOperators =
-  [ "var"
-  , "missing"
-  , "missing_some"
-  , "if"
-  , "?:"
-  , "and"
-  , "or"
-  , "!"
-  , "!!"
-  , "=="
-  , "==="
-  , "!="
-  , "!=="
-  , "<"
-  , "<="
-  , ">"
-  , ">="
-  , "max"
-  , "min"
-  , "+"
-  , "-"
-  , "*"
-  , "/"
-  , "%"
-  , "map"
-  , "filter"
-  , "reduce"
-  , "all"
-  , "none"
-  , "some"
-  , "merge"
-  , "in"
-  , "cat"
-  , "substr"
-  , "log"
-  ]
+allOperators = map builtinName allBuiltins
 
 -- | Text drawn from ASCII, BMP characters above U+E000, and astral
 -- characters, so UTF-16 effects show up.

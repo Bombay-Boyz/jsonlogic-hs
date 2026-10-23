@@ -3,52 +3,55 @@
 -- |
 -- Module      : JsonLogic.Core.Eval
 --
--- Evaluation: a catamorphism (a fold) over the rule tree.
+-- Compiling a rule to a function of the data, and running it.
 --
--- The fold's carrier is a /function/ from the data a rule is evaluated
--- against to a result (@Eval@), not a plain value. That is what lets
--- @map@, @filter@, @reduce@ and friends run the same sub-rule once per
--- element against a different datum, and what makes @if@, @and@ and @or@
--- short-circuit for free: a branch not taken is a function never applied
--- (VISION.md §4, §6).
+-- Compilation is a fold ('foldFix') over the rule tree, done once. Its
+-- carrier is a /function/ from the datum a rule is evaluated against to a
+-- result (@Eval@), not a value. That is what lets @map@, @filter@, @reduce@
+-- and the others run the same sub-rule once per element against a different
+-- datum, and what makes @if@, @and@ and @or@ short-circuit with no extra
+-- code: a branch not taken is a function never applied. Everything that does
+-- not depend on the data (converting literals, resolving custom operators,
+-- choosing each node's code) happens during the fold, so running a compiled
+-- rule many times pays for it once.
 --
--- Evaluation runs in @Run@, a small state-passing monad whose state is the
+-- Evaluation runs in 'Run', a small state-passing monad whose state is the
 -- remaining step budget. It is pure: the budget is threaded through the
--- evaluation, never held in a global or in the 'IO' monad. See
--- "JsonLogic.Core.Config" for the limits.
+-- evaluation, never held in a global or in 'IO'. A failure carries the
+-- location of the node that failed. See "JsonLogic.Core.Config" for the
+-- limits.
 --
--- Operand evaluation order follows the reference: everything is
--- evaluated before its operator runs, except where the reference
--- evaluates lazily (@if@, @and@, @or@) or against a scoped datum
--- (@map@, @filter@, @reduce@, @all@, @none@, @some@).
+-- Operand evaluation order follows the reference: every operand is evaluated
+-- before its operator runs, except where the reference evaluates lazily
+-- (@if@, @and@, @or@) or against a scoped datum (@map@, @filter@, @reduce@,
+-- @all@, @none@, @some@).
 module JsonLogic.Core.Eval
-  ( CustomOperator
-  , Operators
-  , OperatorsError (..)
+  ( Program
+  , compileRule
+  , runProgram
   , evaluate
-  , evaluateWith
-  , noOperators
-  , operatorsFromList
   ) where
 
-import Control.Applicative ((<|>))
-import Control.Monad (filterM, foldM, when)
+import Control.Monad (foldM, when)
 import qualified Data.Aeson as Aeson
 import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as KeyMap
 import Data.Char (digitToInt, isDigit)
-import Data.Functor.Foldable (cata)
+import Data.Fix (foldFix)
 import qualified Data.List as List
-import Data.List.NonEmpty (NonEmpty (..))
-import qualified Data.Map.Strict as Map
-import Data.Maybe (fromMaybe, listToMaybe)
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as Text
+import Data.Vector (Vector)
+import qualified Data.Vector as Vector
 
 import JsonLogic.Core.Config (Config (..), defaultConfig)
-import JsonLogic.Core.Errors (EvalError (..), LimitKind (..), OperatorsError (..))
-import JsonLogic.Core.Parse (builtinOperatorNames)
-import JsonLogic.Core.Rule (OperatorName (..), Rule, RuleF (..))
+import JsonLogic.Core.Custom (Operators, lookupOperator, noOperators)
+import JsonLogic.Core.Errors (EvalError (..), LimitKind (..))
+import JsonLogic.Core.Location (Location)
+import JsonLogic.Core.Number (maximumJs, minimumJs, remainderJs)
+import JsonLogic.Core.Operator (Builtin (..), builtinOperatorName)
+import JsonLogic.Core.Rule (Node (..), Rule, RuleF (..))
 import JsonLogic.Core.Utf16 (utf16CharAt, utf16Length, utf16Slice)
 import JsonLogic.Core.Value
 
@@ -56,238 +59,240 @@ import JsonLogic.Core.Value
 -- The evaluation monad
 -- ---------------------------------------------------------------------
 
--- | The result of a step, with the budget left. Strict, so the budget
--- cannot pile up as a chain of thunks.
-data Result a = Result !a {-# UNPACK #-} !Int
+-- | The outcome of a step: its value and the budget left, or where and why
+-- it failed. One constructor per outcome, strict, so the budget cannot pile
+-- up as a chain of thunks and a step allocates one cell.
+data Result a
+  = Done !a {-# UNPACK #-} !Int
+  | Failed !Location !EvalError
 
--- | A computation that may fail with an 'EvalError' and spends steps from a
--- budget.
-newtype Run a = Run {unRun :: Int -> Either EvalError (Result a)}
+-- | A computation that may fail, at a location in the rule, and that spends
+-- steps from a budget.
+newtype Run a = Run {unRun :: Int -> Result a}
 
 instance Functor Run where
   fmap f (Run m) = Run $ \budget -> case m budget of
-    Left e -> Left e
-    Right (Result a left) -> Right (Result (f a) left)
+    Done a left -> Done (f a) left
+    Failed location e -> Failed location e
+  {-# INLINE fmap #-}
 
 instance Applicative Run where
-  pure a = Run $ \budget -> Right (Result a budget)
+  pure a = Run (Done a)
+  {-# INLINE pure #-}
   Run mf <*> Run ma = Run $ \budget -> case mf budget of
-    Left e -> Left e
-    Right (Result f left) -> case ma left of
-      Left e -> Left e
-      Right (Result a left') -> Right (Result (f a) left')
+    Failed location e -> Failed location e
+    Done f left -> case ma left of
+      Failed location e -> Failed location e
+      Done a left' -> Done (f a) left'
+  {-# INLINE (<*>) #-}
 
 instance Monad Run where
   Run m >>= k = Run $ \budget -> case m budget of
-    Left e -> Left e
-    Right (Result a left) -> unRun (k a) left
+    Failed location e -> Failed location e
+    Done a left -> unRun (k a) left
+  {-# INLINE (>>=) #-}
 
-throwRun :: EvalError -> Run a
-throwRun e = Run (const (Left e))
+-- | What every node's code knows about itself: the configuration it was
+-- compiled with and where it is in the rule.
+data At = At !Config !Location
 
--- | Spend @n@ steps, or fail if fewer than @n@ remain.
-charge :: Config -> Int -> Run ()
-charge config n = Run $ \budget ->
+-- | Fail here.
+failAt :: At -> EvalError -> Run a
+failAt (At _ location) e = Run (const (Failed location e))
+
+-- | Fail here because a limit was exceeded.
+exceeded :: At -> (Config -> LimitKind) -> Run a
+exceeded at@(At config _) kind = failAt at (LimitExceeded (kind config))
+
+-- | Spend @n@ steps, or fail here if fewer than @n@ remain.
+spend :: At -> Int -> Run ()
+spend (At config location) n = Run $ \budget ->
   if n > budget
-    then Left (LimitExceeded (StepLimit (maxSteps config)))
-    else Right (Result () (budget - n))
+    then Failed location (LimitExceeded (StepLimit (maxSteps config)))
+    else Done () (budget - n)
+{-# INLINE spend #-}
 
--- | Spend steps for converting an array operand, which costs as many steps
--- as the array has elements. Everything else converts for free.
-chargeConversion :: Config -> Val -> Run ()
-chargeConversion config value = case value of
-  VArr _ -> Run $ \budget ->
-    let weight = valWeightUpTo (budget + 1) value
-     in if weight > budget
-          then Left (LimitExceeded (StepLimit (maxSteps config)))
-          else Right (Result () (budget - weight))
+-- | Spend steps for converting an operand to a string or number, which
+-- costs as many steps as an array operand has elements, at any depth.
+-- Every other value converts for free.
+spendOnConversion :: At -> Val -> Run ()
+spendOnConversion at value = case value of
+  VArr _ -> Run $ \budget -> unRun (spend at (valWeightUpTo (budget + 1) value)) budget
   _ -> pure ()
 
--- | A rule compiled to a function of the data it is evaluated against.
+-- ---------------------------------------------------------------------
+-- Compiling and running
+-- ---------------------------------------------------------------------
+
+-- | A rule compiled to a function of the data.
 type Eval = Val -> Run Val
 
--- | A caller-supplied operator: given the data being evaluated against
--- and its already-evaluated arguments, produce a result or a reason.
---
--- The contract, in full:
---
--- * The operator is looked up by name after all of its operands have been
---   evaluated, left to right, with no short-circuiting (as for the
---   reference's own ordinary operators). An unknown operator is therefore
---   reported only after its operands have run.
--- * The data argument is the datum in scope: inside @map@, @filter@, and
---   so on, the current element. It is converted to JSON lazily, so an
---   operator that ignores it pays nothing for it.
--- * Arguments and result are JSON. JavaScript values with no JSON form
---   cross the boundary as @null@: @NaN@, the infinities, and @undefined@.
--- * The number of arguments is not checked by the library; the operator
---   checks its own.
--- * @Left reason@ stops the evaluation with 'CustomOperatorFailed'.
--- * The result is held to the configured depth and step limits.
-type CustomOperator = Aeson.Value -> [Aeson.Value] -> Either Text Aeson.Value
+-- | A compiled node: its code, and its value if it is a literal (so that a
+-- parent can do work ahead of time, such as splitting a @var@ path once).
+data Compiled = Compiled
+  { compiledLiteral :: Maybe Val
+  , compiledEval :: Eval
+  }
 
--- | The operators available beyond the builtin set (Standard 0.5: a
--- Handle, supplied at the one place that needs it).
-newtype Operators = Operators {lookupOperator :: OperatorName -> Maybe CustomOperator}
+-- | A compiled rule, with the configuration it was compiled with.
+data Program = Program !Config Eval
 
--- | Registries compose left-biased: where both define a name, the left one
--- wins.
-instance Semigroup Operators where
-  Operators f <> Operators g = Operators (\name -> f name <|> g name)
+-- | Compile a rule once: convert its literals, resolve its custom operators
+-- against the registry, and build each node's code.
+compileRule :: Config -> Operators -> Rule -> Program
+compileRule config operators rule =
+  Program config (compiledEval (foldFix (compileNode config operators) rule))
 
-instance Monoid Operators where
-  mempty = noOperators
+-- | Run a compiled rule against some data, with the configured step budget.
+runProgram :: Program -> Aeson.Value -> Either (Location, EvalError) Aeson.Value
+runProgram (Program config eval) input =
+  case unRun (eval (fromValue input)) (maxSteps config) of
+    Failed location e -> Left (location, e)
+    Done result _ -> Right (toValue result)
 
--- | No custom operators: any operator outside the builtin set is an error.
-noOperators :: Operators
-noOperators = Operators (const Nothing)
+-- | Compile and run with 'defaultConfig' and no custom operators.
+evaluate :: Rule -> Aeson.Value -> Either (Location, EvalError) Aeson.Value
+evaluate = runProgram . compileRule defaultConfig noOperators
 
--- | Custom operators from an association list. A name that is a builtin
--- operator, or that appears twice, is an error rather than being silently
--- ignored.
-operatorsFromList :: [(OperatorName, CustomOperator)] -> Either OperatorsError Operators
-operatorsFromList entries = do
-  table <- foldM add Map.empty entries
-  Right (Operators (`Map.lookup` table))
+-- | One layer of the fold: given each child already compiled, compile this
+-- node. Evaluating a node costs one step, before its own work.
+compileNode :: Config -> Operators -> Node Compiled -> Compiled
+compileNode config operators (Node location node) = Compiled literal (\env -> spend at 1 >> body env)
   where
-    add table (name@(OperatorName text), implementation)
-      | text `elem` builtinOperatorNames = Left (ReservedOperatorName name)
-      | Map.member name table = Left (DuplicateOperatorName name)
-      | otherwise = Right (Map.insert name implementation table)
+    at = At config location
+    literal = case node of
+      Lit value -> Just (fromValue value)
+      _ -> Nothing
+    body = case node of
+      -- the path of a @var@ is almost always a literal: read it once, here
+      Var path fallback
+        | Just key <- compiledLiteral path ->
+            let known = pathOf key
+             in variable at (compiledEval path) (compiledEval <$> fallback) (const (pure known))
+      _ -> compileBody at operators (fmap compiledEval node)
 
--- | Evaluate a rule against some data, with the default limits and no
--- custom operators.
-evaluate :: Rule -> Aeson.Value -> Either EvalError Aeson.Value
-evaluate = evaluateWith defaultConfig noOperators
-
--- | Evaluate a rule against some data.
-evaluateWith :: Config -> Operators -> Rule -> Aeson.Value -> Either EvalError Aeson.Value
-evaluateWith config operators rule input =
-  case unRun (cata (algebra config operators) rule (fromValue input)) (maxSteps config) of
-    Left e -> Left e
-    Right (Result result _) -> Right (toValue result)
-
--- | One layer of the fold: given each child already compiled to an
--- @Eval@, compile this node. Every node evaluated costs one step.
-algebra :: Config -> Operators -> RuleF Eval -> Eval
-algebra config operators node = \env -> charge config 1 >> body env
-  where
-    body = compile config operators node
-
-compile :: Config -> Operators -> RuleF Eval -> Eval
-compile config operators node = case node of
+compileBody :: At -> Operators -> RuleF Eval -> Eval
+compileBody at@(At config _) operators node = case node of
   Lit literal ->
-    -- converted once per evaluation, not on every use of the literal: a
-    -- literal inside @map@ is shared by all of its iterations
+    -- converted once, when the rule is compiled, and shared by every run
     let converted = fromValue literal in const (pure converted)
-  Arr items -> fmap VArr . evalAll items
-  Var path fallback -> \env -> do
-    key <- path env
-    notFound <- maybe (pure VNull) ($ env) fallback
-    let (work, found) = lookupVariable (workCap config) env key notFound
-    charge config work
-    pure found
+  Arr items ->
+    let elements = Vector.fromList items in \env -> VArr <$> Vector.mapM ($ env) elements
+  Var path fallback -> variable at path fallback (pure . pathOf)
   Missing keys -> \env -> do
     names <- evalAll keys env
-    mapM_ (chargeConversion config) names
+    mapM_ (spendOnConversion at) names
     let (work, absent) = missingKeys (workCap config) names env
-    charge config work
-    pure (VArr absent)
+    spend at work
+    pure (VArr (Vector.fromList absent))
   MissingSome needed options -> \env -> do
     count <- needed env
     listed <- options env
-    missingSome config count listed env
+    missingSome at count listed env
   If branches -> evalIf branches
   And operands -> evalAnd operands
   Or operands -> evalOr operands
   Not operand -> fmap (VBool . not . truthy) . operand
-  Cast operand -> fmap (VBool . truthy) . operand
-  LooseEq x y -> coercing config (\a b -> VBool (looseEquals a b)) x y
+  DoubleNot operand -> fmap (VBool . truthy) . operand
+  LooseEq x y -> coercing at (\a b -> VBool (looseEquals a b)) x y
   StrictEq x y -> binary (\a b -> VBool (strictEquals a b)) x y
-  LooseNeq x y -> coercing config (\a b -> VBool (not (looseEquals a b))) x y
+  LooseNeq x y -> coercing at (\a b -> VBool (not (looseEquals a b))) x y
   StrictNeq x y -> binary (\a b -> VBool (not (strictEquals a b))) x y
-  Lt x y z -> between config lessThan x y z
-  Lte x y z -> between config lessOrEqual x y z
-  Gt x y -> coercing config (\a b -> VBool (lessThan b a)) x y
-  Gte x y -> coercing config (\a b -> VBool (lessOrEqual b a)) x y
-  Max operands -> fmap (VNum . maximumJs . map toNumber) . numeric config operands
-  Min operands -> fmap (VNum . minimumJs . map toNumber) . numeric config operands
+  Lt x y z -> between at lessThan x y z
+  Lte x y z -> between at lessOrEqual x y z
+  Gt x y -> coercing at (\a b -> VBool (lessThan b a)) x y
+  Gte x y -> coercing at (\a b -> VBool (lessOrEqual b a)) x y
+  Max operands -> fmap (VNum . maximumJs . map toNumber) . numeric at operands
+  Min operands -> fmap (VNum . minimumJs . map toNumber) . numeric at operands
   Add operands ->
-    fmap (VNum . List.foldl' (\total v -> total + parseFloat v) 0) . numeric config operands
+    fmap (VNum . List.foldl' (\total v -> total + parseFloat v) 0) . numeric at operands
   Sub x y -> \env -> do
     a <- x env
     b <- definedOperand <$> traverse ($ env) y
-    chargeConversion config a
-    mapM_ (chargeConversion config) b
+    spendOnConversion at a
+    mapM_ (spendOnConversion at) b
     pure (VNum (maybe (negate (toNumber a)) (\v -> toNumber a - toNumber v) b))
-  Mul operands -> fmap multiply . numericNonEmpty config operands
-  Div x y -> coercing config (\a b -> VNum (toNumber a / toNumber b)) x y
-  Mod x y -> coercing config (\a b -> VNum (remainderJs (toNumber a) (toNumber b))) x y
+  Mul [] -> const (failAt at (InvalidOperand (builtinOperatorName BMul)))
+  Mul (first : rest) -> \env -> do
+    -- the reference folds without a seed: a single operand is returned as
+    -- it is, not converted to a number
+    a <- first env
+    bs <- evalAll rest env
+    mapM_ (spendOnConversion at) (a : bs)
+    pure (List.foldl' (\acc v -> VNum (parseFloat acc * parseFloat v)) a bs)
+  Div x y -> coercing at (\a b -> VNum (toNumber a / toNumber b)) x y
+  Mod x y -> coercing at (\a b -> VNum (remainderJs (toNumber a) (toNumber b))) x y
   Map collection logic ->
-    withCollection collection (VArr []) $ \items -> do
-      guardInput config items
-      VArr <$> traverse logic items
+    withCollection collection (VArr Vector.empty) $ \items -> do
+      guardInput at items
+      VArr <$> Vector.mapM logic items
   Filter collection logic ->
-    withCollection collection (VArr []) $ \items -> do
-      guardInput config items
-      VArr <$> filterM (fmap truthy . logic) items
+    withCollection collection (VArr Vector.empty) $ \items -> do
+      guardInput at items
+      VArr <$> Vector.filterM (fmap truthy . logic) items
   Reduce collection logic initial -> reduceRule collection logic initial
   All collection logic ->
     withCollection collection (VBool False) $ \items ->
-      if null items then pure (VBool False) else VBool <$> allTruthy logic items
+      if Vector.null items then pure (VBool False) else VBool <$> allTruthy logic (Vector.toList items)
   None collection logic ->
     withCollection collection (VBool True) $ \items ->
-      if null items then pure (VBool True) else VBool . not <$> anyTruthy logic items
+      if Vector.null items then pure (VBool True) else VBool . not <$> anyTruthy logic (Vector.toList items)
   Some collection logic ->
     withCollection collection (VBool False) $ \items ->
-      if null items then pure (VBool False) else VBool <$> anyTruthy logic items
+      if Vector.null items then pure (VBool False) else VBool <$> anyTruthy logic (Vector.toList items)
   Merge operands -> \env -> do
     values <- evalAll operands env
-    let result = concatMap flattenOnce values
-    spendOnLength config (maxArrayLength config) ArrayLimit (lengthUpTo (maxArrayLength config + 1) result)
-    pure (VArr result)
-  In needle haystack -> coercing config (\a b -> VBool (contains a b)) needle haystack
+    let pieces = map flattenOnce values
+        size = List.foldl' (\total piece -> total + Vector.length piece) 0 pieces
+    when (size > maxArrayLength config) $ exceeded at (ArrayLimit . maxArrayLength)
+    spend at size
+    pure (VArr (Vector.concat pieces))
+  In needle haystack -> coercing at (\a b -> VBool (contains a b)) needle haystack
   Cat operands -> \env -> do
     values <- evalAll operands env
-    mapM_ (chargeConversion config) values
+    mapM_ (spendOnConversion at) values
     let pieces = map toJoinText values
-    total <- foldM (addLength config) 0 pieces
-    charge config total
+    total <- foldM (addLength at) 0 pieces
+    spend at total
     pure (VStr (Text.concat pieces))
   Substr source start len -> \env -> do
     text <- source env
     from <- start env
     limit <- definedOperand <$> traverse ($ env) len
-    chargeConversion config text
+    spendOnConversion at text
     pure (VStr (substring (toJsString text) from limit))
   Log operand -> operand
   Discard inner extras -> \env -> do
     result <- inner env
     mapM_ ($ env) extras
     pure result
-  CustomOp name operands -> \env -> do
-    arguments <- evalAll operands env
-    case lookupOperator operators name of
-      Nothing -> throwRun (UnknownOperator name)
-      Just implementation ->
-        case implementation (toValue env) (map toValue arguments) of
-          Left reason -> throwRun (CustomOperatorFailed name reason)
-          Right result -> do
-            when (nestsDeeperThan (maxDepth config) result) $
-              throwRun (LimitExceeded (ValueDepthLimit (maxDepth config)))
-            charge config (jsonCost config result)
-            pure (fromValue result)
+  CustomOp name operands -> case lookupOperator operators name of
+    Nothing -> \env -> evalAll operands env >> failAt at (UnknownOperator name)
+    Just implementation -> \env -> do
+      arguments <- evalAll operands env
+      case implementation (toValue env) (map toValue arguments) of
+        Left reason -> failAt at (CustomOperatorFailed name reason)
+        Right result -> do
+          when (nestsDeeperThan (maxDepth config) result) $
+            exceeded at (ValueDepthLimit . maxDepth)
+          spend at (jsonWeightUpTo (maxSteps config + 1) result)
+          pure (fromValue result)
 
--- | What a value a custom operator returned costs to take in: one step per
--- node, counted only as far as the whole budget could ever pay.
-jsonCost :: Config -> Aeson.Value -> Int
-jsonCost config = jsonWeightUpTo (maxSteps config + 1)
+-- | @var@: evaluate the path (for its step and its failures), turn its value
+-- into a 'Path' (ahead of time, when it is a literal), and look it up.
+variable :: At -> Eval -> Maybe Eval -> (Val -> Run Path) -> Eval
+variable at@(At config _) path fallback toPath env = do
+  key <- path env >>= toPath
+  notFound <- maybe (pure VNull) ($ env) fallback
+  let (work, found) = lookupPath (workCap config) env key notFound
+  spend at work
+  pure found
 
 -- ---------------------------------------------------------------------
 -- Combinators over compiled operands
 -- ---------------------------------------------------------------------
 
-evalAll :: (Traversable t) => t Eval -> Val -> Run (t Val)
+evalAll :: [Eval] -> Val -> Run [Val]
 evalAll operands env = traverse ($ env) operands
 
 -- | Two operands, no conversion cost (the combiner never walks an array).
@@ -296,36 +301,30 @@ binary combine x y env = combine <$> x env <*> y env
 
 -- | Two operands that the combiner may convert to a string or number,
 -- which costs as many steps as an array operand has elements.
-coercing :: Config -> (Val -> Val -> Val) -> Eval -> Eval -> Eval
-coercing config combine x y env = do
+coercing :: At -> (Val -> Val -> Val) -> Eval -> Eval -> Eval
+coercing at combine x y env = do
   a <- x env
   b <- y env
-  chargeConversion config a
-  chargeConversion config b
+  spendOnConversion at a
+  spendOnConversion at b
   pure (combine a b)
 
 -- | Operands about to be converted to numbers, charged for the conversion.
-numeric :: Config -> [Eval] -> Val -> Run [Val]
-numeric config operands env = do
+numeric :: At -> [Eval] -> Val -> Run [Val]
+numeric at operands env = do
   values <- evalAll operands env
-  mapM_ (chargeConversion config) values
-  pure values
-
-numericNonEmpty :: Config -> NonEmpty Eval -> Val -> Run (NonEmpty Val)
-numericNonEmpty config operands env = do
-  values <- evalAll operands env
-  mapM_ (chargeConversion config) values
+  mapM_ (spendOnConversion at) values
   pure values
 
 -- | @x op y@, or the chained @x op y && y op z@ when a third operand is
 -- given. All operands are evaluated first, as in the reference.
-between :: Config -> (Val -> Val -> Bool) -> Eval -> Eval -> Maybe Eval -> Eval
-between config holds x y z env = do
+between :: At -> (Val -> Val -> Bool) -> Eval -> Eval -> Maybe Eval -> Eval
+between at holds x y z env = do
   a <- x env
   b <- y env
   c <- definedOperand <$> traverse ($ env) z
-  mapM_ (chargeConversion config) [a, b]
-  mapM_ (chargeConversion config) c
+  mapM_ (spendOnConversion at) [a, b]
+  mapM_ (spendOnConversion at) c
   pure (VBool (maybe (holds a b) (\third -> holds a b && holds b third) c))
 
 -- | Condition/consequent pairs, then an optional else; no branch means null.
@@ -365,7 +364,7 @@ evalOr (first : rest) env = do
 
 -- | Evaluate a collection operand; run @onItems@ if it is an array,
 -- otherwise answer @fallback@.
-withCollection :: Eval -> Val -> ([Val] -> Run Val) -> Eval
+withCollection :: Eval -> Val -> (Vector Val -> Run Val) -> Eval
 withCollection collection fallback onItems env = do
   evaluated <- collection env
   case evaluated of
@@ -374,32 +373,15 @@ withCollection collection fallback onItems env = do
 
 -- | Refuse to iterate an array longer than the array limit, before doing
 -- any of the work.
-guardInput :: Config -> [Val] -> Run ()
-guardInput config items =
-  when (lengthUpTo (maxArrayLength config + 1) items > maxArrayLength config) $
-    throwRun (LimitExceeded (ArrayLimit (maxArrayLength config)))
-
--- | The length of a list, counted only up to @cap@.
-lengthUpTo :: Int -> [a] -> Int
-lengthUpTo cap = go 0
-  where
-    go n [] = n
-    go n (_ : rest)
-      | n >= cap = n
-      | otherwise = go (n + 1) rest
-
--- | Fail if a built result is longer than the limit; otherwise spend its
--- length in steps, so building is paid for in proportion to its size.
-spendOnLength :: Config -> Int -> (Int -> LimitKind) -> Int -> Run ()
-spendOnLength config limit kind size = do
-  when (size > limit) $ throwRun (LimitExceeded (kind limit))
-  charge config size
+guardInput :: At -> Vector Val -> Run ()
+guardInput at@(At config _) items =
+  when (Vector.length items > maxArrayLength config) $ exceeded at (ArrayLimit . maxArrayLength)
 
 -- | Add a piece's length (in UTF-16 code units) to a running total,
 -- failing as soon as the total passes the string limit.
-addLength :: Config -> Int -> Text -> Run Int
-addLength config total piece
-  | total' > maxStringLength config = throwRun (LimitExceeded (StringLimit (maxStringLength config)))
+addLength :: At -> Int -> Text -> Run Int
+addLength at@(At config _) total piece
+  | total' > maxStringLength config = exceeded at (StringLimit . maxStringLength)
   | otherwise = pure total'
   where
     total' = total + utf16Length piece
@@ -411,7 +393,7 @@ reduceRule collection logic initial env = do
   evaluated <- collection env
   start <- initial env
   case evaluated of
-    VArr items -> foldM step start items
+    VArr items -> Vector.foldM' step start items
     _ -> pure start
   where
     step accumulator item =
@@ -441,24 +423,18 @@ anyTruthy logic (item : rest) = do
 -- Operator semantics
 -- ---------------------------------------------------------------------
 
--- | The reference folds @*@ with no seed: a single operand is returned
--- untouched (not converted to a number), two or more are parsed and
--- multiplied.
-multiply :: NonEmpty Val -> Val
-multiply (first :| rest) =
-  List.foldl' (\acc v -> VNum (parseFloat acc * parseFloat v)) first rest
-
--- | @merge@ concatenates, flattening one level; non-arrays are appended.
-flattenOnce :: Val -> [Val]
+-- | @merge@ flattens one level; anything that is not an array is one
+-- element.
+flattenOnce :: Val -> Vector Val
 flattenOnce (VArr items) = items
-flattenOnce other = [other]
+flattenOnce other = Vector.singleton other
 
 -- | @in@: substring of a string, or strict-equal member of an array.
 -- A falsy container (including the empty string) contains nothing.
 contains :: Val -> Val -> Bool
 contains _ (VStr s) | Text.null s = False
 contains needle (VStr s) = Text.isInfixOf (toJsString needle) s
-contains needle (VArr items) = any (strictEquals needle) items
+contains needle (VArr items) = Vector.any (strictEquals needle) items
 contains _ _ = False
 
 -- | Which of the keys have no value, or an empty-string one. If the first
@@ -468,12 +444,12 @@ contains _ _ = False
 -- 'lookupVariable'); the cap bounds how far any one lookup is followed.
 missingKeys :: Int -> [Val] -> Val -> (Int, [Val])
 missingKeys cap args dat =
-  ( sum [work | (_, work, _) <- probes]
+  ( List.foldl' (+) 0 [work | (_, work, _) <- probes]
   , [key | (key, _, True) <- probes]
   )
   where
     keys = case args of
-      VArr listed : _ -> listed
+      VArr listed : _ -> Vector.toList listed
       _ -> args
     probes = map probe keys
     probe key =
@@ -486,8 +462,9 @@ missingKeys cap args dat =
     -- The reference looks each key up with @{"var": key}@, so a key that is
     -- itself an array is a @var@'s argument list: path, then default.
     lookupKey key = case key of
-      VArr [] -> (0, dat)
-      VArr (path : rest) -> lookupVariable cap dat path (fromMaybe VNull (listToMaybe rest))
+      VArr listed -> case Vector.toList listed of
+        [] -> (0, dat)
+        path : rest -> lookupVariable cap dat path (case rest of fallback : _ -> fallback; [] -> VNull)
       _ -> lookupVariable cap dat key VNull
 
 -- | @missing_some@: nothing is missing if at least @count@ of the options
@@ -497,24 +474,24 @@ missingKeys cap args dat =
 -- list throws; a string counts its code units; anything without a length
 -- compares as @NaN@, which is never enough, so the missing ones are
 -- returned.
-missingSome :: Config -> Val -> Val -> Val -> Run Val
-missingSome config count options env = case options of
-  VNull -> throwRun (InvalidOperand (OperatorName "missing_some"))
-  VUndefined -> throwRun (InvalidOperand (OperatorName "missing_some"))
+missingSome :: At -> Val -> Val -> Val -> Run Val
+missingSome at@(At config _) count options env = case options of
+  VNull -> failAt at (InvalidOperand (builtinOperatorName BMissingSome))
+  VUndefined -> failAt at (InvalidOperand (builtinOperatorName BMissingSome))
   _ -> do
-    chargeConversion config options
+    spendOnConversion at options
     let names = case options of
-          VArr items -> items
+          VArr items -> Vector.toList items
           other -> [other]
         (work, absent) = missingKeys (workCap config) names env
-    charge config work
+    spend at work
     let have = case optionLength of
           Just n -> n - fromIntegral (length absent)
           Nothing -> 0 / 0
-    pure (if lessOrEqual count (VNum have) then VArr [] else VArr absent)
+    pure (if lessOrEqual count (VNum have) then VArr Vector.empty else VArr (Vector.fromList absent))
   where
     optionLength = case options of
-      VArr items -> Just (fromIntegral (length items))
+      VArr items -> Just (fromIntegral (Vector.length items))
       VStr s -> Just (fromIntegral (utf16Length s))
       VObj fields -> toNumber <$> KeyMap.lookup "length" fields
       _ -> Nothing
@@ -524,23 +501,29 @@ missingSome config count options env = case options of
 workCap :: Config -> Int
 workCap config = maxSteps config + 1
 
--- | @var@: look a dotted path up in the data. An empty or null path is
--- the data itself; a missing step gives the fallback.
---
--- The first component is the work the walk did, in steps: one per array
--- element passed over and one per code unit of a string indexed or measured
--- (see 'property'). The caller charges it, so a lookup into a large array
--- is paid for in proportion to its size. It is counted only up to @cap@.
+-- | A @var@ path, read: the data itself, or the property names to follow.
+data Path = WholeData | Steps [Text]
+
+-- | Read a @var@ path the way the reference does: an empty or null path is
+-- the data itself; anything else is converted to a string and split at dots.
+pathOf :: Val -> Path
+pathOf VNull = WholeData
+pathOf VUndefined = WholeData
+pathOf (VStr s) | Text.null s = WholeData
+pathOf key = Steps (Text.splitOn "." (toJsString key))
+
+-- | @var@: look a path up in the data; a missing step gives the fallback.
 lookupVariable :: Int -> Val -> Val -> Val -> (Int, Val)
-lookupVariable cap dat path notFound
-  | isEmptyPath path = (0, dat)
-  | otherwise = (work, fromMaybe (nullIfUndefined notFound) found)
+lookupVariable cap dat = lookupPath cap dat . pathOf
+
+-- | Follow a path. The first component is the work the walk did, in steps:
+-- one per code unit of a string that is indexed or measured (see
+-- 'property'). The caller charges it. It is counted only up to @cap@.
+lookupPath :: Int -> Val -> Path -> Val -> (Int, Val)
+lookupPath _ dat WholeData _ = (0, dat)
+lookupPath cap dat (Steps keys) notFound = (work, fromMaybe (nullIfUndefined notFound) found)
   where
-    (work, found) = descend cap dat (Text.splitOn "." (toJsString path))
-    isEmptyPath VNull = True
-    isEmptyPath VUndefined = True
-    isEmptyPath (VStr s) = Text.null s
-    isEmptyPath _ = False
+    (work, found) = descend cap dat keys
 
 -- | An optional operand that evaluates to undefined counts as absent: the
 -- reference tests the /value/ (@c === undefined@), not how many
@@ -578,7 +561,7 @@ descend cap = go 0
                     -- a property that is itself undefined counts as missing,
                     -- as in the reference
                     Just VUndefined -> (spent', Nothing)
-                    Just child -> go spent' child rest
+                    Just next -> go spent' next rest
 
 -- | JavaScript property access on a JSON value: object keys, array and
 -- string indices, and @length@. Only a value's own properties are seen:
@@ -586,16 +569,14 @@ descend cap = go 0
 -- chain (@constructor@, @toString@, ...), which JSON data does not have
 -- (docs/COMPATIBILITY.md, DEV-INHERITED).
 --
--- The first component is the work, in steps: an object lookup is free, an
--- array index costs the elements before it (counted up to @cap@), measuring
--- an array costs its length, and a string costs its length in code points.
+-- The first component is the work, in steps: object and array access is
+-- constant time and free; indexing or measuring a string walks it, and costs
+-- its length in code points, counted up to @cap@.
 property :: Int -> Val -> Text -> (Int, Maybe Val)
 property _ (VObj fields) key = (0, KeyMap.lookup (Key.fromText key) fields)
-property cap (VArr items) key
-  | key == "length" = (lengthUpTo cap items, Just (VNum (fromIntegral (length items))))
-  | otherwise = case arrayIndex key of
-      Nothing -> (0, Nothing)
-      Just i -> (lengthUpTo (min i cap) items, listToMaybe (drop i items))
+property _ (VArr items) key
+  | key == "length" = (0, Just (VNum (fromIntegral (Vector.length items))))
+  | otherwise = (0, arrayIndex key >>= (items Vector.!?))
 property cap (VStr s) key
   | key == "length" = (size, Just (VNum (fromIntegral (utf16Length s))))
   | otherwise = case arrayIndex key of
@@ -605,7 +586,7 @@ property cap (VStr s) key
     size = min cap (Text.length s)
 property _ _ _ = (0, Nothing)
 
--- | A canonical array index: digits, no leading zero.
+-- | A canonical array index: digits, no leading zero, below 10^9.
 arrayIndex :: Text -> Maybe Int
 arrayIndex key
   | Text.null key || Text.length key > 9 = Nothing

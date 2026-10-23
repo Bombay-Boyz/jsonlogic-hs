@@ -6,28 +6,25 @@
 -- covers, each stated here as an example a reader can follow.
 module CompatSpec (spec) where
 
-import Data.Aeson (Value (..), decode, object, toJSON, (.=))
+import Data.Aeson (Value (..), object, toJSON, (.=))
 import qualified Data.Aeson.Key as Key
-import qualified Data.ByteString.Lazy.Char8 as Char8
-import Data.Maybe (fromMaybe)
 import qualified Data.Text as Text
 import Test.Hspec
 import Test.QuickCheck
 
 import Gen (genText)
 import JsonLogic
+import JsonLogic.Core.Location (root)
 import JsonLogic.Core.Utf16
+import Support (Problem (..), at, json, problem)
 
 -- | A registry that the test expects to be accepted.
 registry :: [(OperatorName, CustomOperator)] -> Operators
 registry = either (error . show) id . operatorsFromList
 
-json :: String -> Value
-json text = fromMaybe (error ("bad test JSON: " ++ text)) (decode (Char8.pack text))
-
-strict, lenient :: String -> String -> Either Error Value
-strict rule dat = apply (json rule) (json dat)
-lenient rule dat = applyWithConfig defaultConfig{arityMode = Lenient} noOperators (json rule) (json dat)
+strict, lenient :: String -> String -> Either Problem Value
+strict rule dat = problem (apply (json rule) (json dat))
+lenient rule dat = problem (applyWithConfig defaultConfig{arityMode = Lenient} noOperators (json rule) (json dat))
 
 -- | Is a rule's numeric result negative zero? Observed through 1 / x.
 yieldsNegativeZero :: String -> Bool
@@ -38,7 +35,7 @@ spec = do
   describe "arity modes" $ do
     it "strict rejects a wrong argument count precisely" $
       strict "{\"==\":[1]}" "null"
-        `shouldBe` Left (ParseFailure (ArityMismatch (OperatorName "==") (Exactly 2) 1))
+        `shouldBe` Left (ParseProblem (ArityMismatch (OperatorName "==") (Exactly 2) 1))
     it "lenient treats a missing argument as undefined" $ do
       lenient "{\"==\":[null]}" "null" `shouldBe` Right (Bool True)
       lenient "{\"==\":[1]}" "null" `shouldBe` Right (Bool False)
@@ -46,15 +43,24 @@ spec = do
       lenient "{\"+\":[1]}" "null" `shouldBe` Right (Number 1)
     it "lenient still evaluates a surplus argument of an ordinary operator, so it can fail" $
       lenient "{\"==\":[1,1,{\"nope\":[]}]}" "null"
-        `shouldBe` Left (EvalFailure (UnknownOperator (OperatorName "nope")))
+        `shouldBe` Left (EvalProblem (UnknownOperator (OperatorName "nope")))
     it "lenient never looks at a surplus argument of map, as in the reference" $
       lenient "{\"map\":[[1],{\"var\":\"\"},{\"nope\":[]}]}" "null" `shouldBe` Right (toJSON [1 :: Int])
     it "lenient reduce without an initial value starts from null" $
       lenient "{\"reduce\":[[1,2],{\"cat\":[{\"var\":\"accumulator\"},{\"var\":\"current\"}]}]}" "null"
         `shouldBe` Right (String "12")
-    it "both modes reject * with no operands, as the reference throws" $ do
-      strict "{\"*\":[]}" "null" `shouldBe` Left (ParseFailure (ArityMismatch (OperatorName "*") (AtLeast 1) 0))
-      lenient "{\"*\":[]}" "null" `shouldBe` Left (ParseFailure (ArityMismatch (OperatorName "*") (AtLeast 1) 0))
+    it "strict rejects * with no operands before evaluating anything" $
+      strict "{\"*\":[]}" "null" `shouldBe` Left (ParseProblem (ArityMismatch (OperatorName "*") (AtLeast 1) 0))
+    it "lenient throws on * with no operands only when it is evaluated, as the reference does" $ do
+      lenient "{\"*\":[]}" "null" `shouldBe` Left (EvalProblem (InvalidOperand (OperatorName "*")))
+      lenient "{\"if\":[true,1,{\"*\":[]}]}" "null" `shouldBe` Right (Number 1)
+      lenient "{\"or\":[1,{\"*\":[]}]}" "null" `shouldBe` Right (Number 1)
+      lenient "{\"and\":[0,{\"*\":[]}]}" "null" `shouldBe` Right (Number 0)
+      lenient "{\"map\":[[],{\"*\":[]}]}" "null" `shouldBe` Right (toJSON ([] :: [Int]))
+      lenient "{\"and\":[1,{\"*\":[]}]}" "null" `shouldBe` Left (EvalProblem (InvalidOperand (OperatorName "*")))
+    it "locates the empty * that was reached" $
+      applyWithConfig defaultConfig{arityMode = Lenient} noOperators (json "{\"and\":[1,{\"*\":[]}]}") Null
+        `shouldBe` Left (EvalFailure (at [Left "and", Right 1]) (InvalidOperand (OperatorName "*")))
     it "strict success implies the same lenient answer" $
       forAll (genRuleForArity 4) $ \rule -> case apply rule Null of
         Right v -> applyWithConfig defaultConfig{arityMode = Lenient} noOperators rule Null === Right v
@@ -142,7 +148,7 @@ spec = do
       strict "{\"missing_some\":[2,\"ab\"]}" "{}" `shouldBe` Right (json "[\"ab\"]")
     it "throws where the reference throws on a null option list" $
       strict "{\"missing_some\":[1,null]}" "{}"
-        `shouldBe` Left (EvalFailure (InvalidOperand (OperatorName "missing_some")))
+        `shouldBe` Left (EvalProblem (InvalidOperand (OperatorName "missing_some")))
     it "returns the missing keys when the options have no length" $
       strict "{\"missing_some\":[0,0]}" "{}" `shouldBe` Right (json "[0]")
 
@@ -180,18 +186,19 @@ spec = do
     it "a custom failure inside map stops the evaluation" $ do
       let ops = registry [(OperatorName "double", double)]
       applyWith ops (json "{\"map\":[[1,\"x\"],{\"double\":[{\"var\":\"\"}]}]}") Null
-        `shouldBe` Left (EvalFailure (CustomOperatorFailed (OperatorName "double") "expected one number"))
+        `shouldBe` Left (EvalFailure (at [Left "map", Right 1]) (CustomOperatorFailed (OperatorName "double") "expected one number"))
     it "combining with the empty registry changes nothing" $ do
       let ops = registry [(OperatorName "double", double)]
       applyWith (ops <> noOperators) (json "{\"double\":[2]}") Null `shouldBe` Right (Number 4)
 
   describe "renderError" $ do
-    it "describes each constructor" $ do
-      renderError (ParseFailure (DepthExceeded 64)) `shouldBe` "rule nests deeper than the limit of 64"
-      renderError (EvalFailure (UnknownOperator (OperatorName "x"))) `shouldBe` "unknown operator \"x\""
-      renderError (EvalFailure (LimitExceeded (StepLimit 9))) `shouldBe` "evaluation exceeded the limit of 9 steps"
-      renderError (ParseFailure (ArityMismatch (OperatorName "==") (Exactly 2) 1))
-        `shouldBe` "operator \"==\" takes exactly 2 arguments, but was given 1"
+    it "describes each constructor, after the location" $ do
+      renderError (ParseFailure root (DepthExceeded 64)) `shouldBe` "at the root of the rule: the rule nests deeper than the limit of 64"
+      renderError (EvalFailure (at [Left "if", Right 2]) (UnknownOperator (OperatorName "x")))
+        `shouldBe` "at /if/2: unknown operator \"x\""
+      renderError (EvalFailure root (LimitExceeded (StepLimit 9))) `shouldBe` "at the root of the rule: evaluation exceeded the limit of 9 steps"
+      renderError (ParseFailure (at [Left "and", Right 0]) (ArityMismatch (OperatorName "==") (Exactly 2) 1))
+        `shouldBe` "at /and/0: operator \"==\" takes exactly 2 arguments, but was given 1"
 
 genRuleForArity :: Int -> Gen Value
 genRuleForArity _ = do
