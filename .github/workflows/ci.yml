@@ -226,8 +226,9 @@ jobs:
           cabal-version: latest
 
       - run: cabal update
-      - name: build with interface files
-        run: cabal build all --ghc-options=-fwrite-ide-info --ghc-options=-hiedir=.hie
       - name: install weeder
         run: cabal install weeder --index-state=2026-10-19T00:00:00Z --installdir="$HOME/.local/bin" --install-method=copy --overwrite-policy=always
-      - run: '"$HOME/.local/bin/weeder"'
+      - name: dead-code check
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          bash scripts/weeder.sh

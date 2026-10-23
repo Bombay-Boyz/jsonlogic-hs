@@ -14,6 +14,8 @@ import Data.Text (Text)
 
 import JsonLogic
 
+{- HLINT ignore json "Avoid restricted function" -}
+
 -- | A JSON literal written in the test. A malformed one is a bug in the
 -- test, so it stops the test with the literal in the message (ADR 0004).
 json :: String -> Value
