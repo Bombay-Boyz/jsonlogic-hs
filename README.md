@@ -23,10 +23,12 @@ Author: Sabrinathan Nair. Licence: MIT LICENSE.
 | Community suite (json-logic/compat-tables) | 782 / 1138 lenient, 839 / 1138 strict |
 | Haddock coverage | 100% of every module |
 
-The community suite is mostly written for the newer JSON Logic 2.0 dialect.
-In lenient mode this library scores exactly what json-logic-js scores, file
-for file, because it implements that reference's dialect; see
-[What it is not](#what-it-is-not).
+The community suite (json-logic/compat-tables) is mostly written for the newer
+JSON Logic 2.0 dialect, which this library does not implement. We run it for
+reference, not as a target. In lenient mode the library scores exactly what
+json-logic-js scores on it, file for file (782 / 1138), which is what you would
+expect from a faithful copy of that reference. Libraries that implement the 2.0
+dialect score much higher on it; see [How it compares](#how-it-compares).
 
 ## Quick start
 
@@ -42,7 +44,7 @@ main = print (apply <$> decode "{\"==\": [{\"var\": \"a\"}, 1]}" <*> decode "{\"
 ```
 
 `apply rule data` takes both as aeson `Value`s and returns
-`Either Error Value`. [`docs/TUTORIAL.md`](docs/TUTORIAL.md) walks through
+`Either Error Value`. [`docs/TUTORIAL.md`](https://github.com/Bombay-Boyz/jsonlogic-hs/blob/main/docs/TUTORIAL.md) walks through
 everything else: compiling once, configuring limits, custom operators,
 reading errors, and finding out what a rule reads.
 
@@ -66,7 +68,7 @@ renderLocation :: Location -> Text                             -- an RFC 6901 JS
 
 Everything is pure: no `IO`, no global state. The supported API is the
 `JsonLogic` module; `JsonLogic.Core.*` is exposed for advanced use and may
-change before 1.0 ([`docs/STABILITY.md`](docs/STABILITY.md)).
+change before 1.0 ([`docs/STABILITY.md`](https://github.com/Bombay-Boyz/jsonlogic-hs/blob/main/docs/STABILITY.md)).
 
 ## What you can rely on
 
@@ -76,11 +78,11 @@ change before 1.0 ([`docs/STABILITY.md`](docs/STABILITY.md)).
   length, indexing and ordering, ECMAScript whitespace in numeric strings, and
   numbers printed digit for digit as JavaScript prints them. Every place it
   deliberately differs is listed with a reason and a test in
-  [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md).
+  [`docs/COMPATIBILITY.md`](https://github.com/Bombay-Boyz/jsonlogic-hs/blob/main/docs/COMPATIBILITY.md).
 - **Bounded work.** The default `Config` limits rule depth (64), evaluation
   steps (1,000,000), string length (1 MiB in UTF-16 code units) and array
   length (100,000), so a hostile rule cannot hang the process or exhaust its
-  memory. Each limit is exact at both edges ([`docs/LIMITS.md`](docs/LIMITS.md)).
+  memory. Each limit is exact at both edges ([`docs/LIMITS.md`](https://github.com/Bombay-Boyz/jsonlogic-hs/blob/main/docs/LIMITS.md)).
 - **Errors you can act on.** A closed set of constructors to match on, each
   with the JSON Pointer of the node that failed:
   `renderError` gives `at /if/1: unknown operator "nope"`.
@@ -97,7 +99,7 @@ change before 1.0 ([`docs/STABILITY.md`](docs/STABILITY.md)).
 ## How it is checked
 
 Every claim above has a mechanical check behind it, and the checks are
-checked: [`scripts/check-harness.sh`](scripts/check-harness.sh) feeds every
+checked: [`scripts/check-harness.sh`](https://github.com/Bombay-Boyz/jsonlogic-hs/blob/main/scripts/check-harness.sh) feeds every
 runner missing, empty, truncated and tampered fixtures and demands that each
 fails.
 
@@ -119,21 +121,20 @@ fails.
   that always resolve to the operator at fault, the fast numeric algorithms
   against exact ones on hundreds of thousands of doubles, and `dataUse`'s
   guarantee.
-- **Hygiene, all blocking in CI**: `-Werror` on the primary GHC, a matrix of
-  GHC 9.6 to 9.14 plus macOS and Windows, hlint, fourmolu, weeder (no dead
-  code), shellcheck, actionlint, `cabal check`, a build of the source
+- **Hygiene, blocking in CI**: `-Werror` on the primary GHC, a matrix of
+  GHC 9.6 to 9.14 plus macOS and Windows, hlint, fourmolu, shellcheck, actionlint, `cabal check`, a build of the source
   distribution on its own, and a downstream project that uses only the public
-  module.
+  module. Dead code is checked with weeder, which is advisory for now.
 
 Implementing JsonLogic in another language? The fixtures are plain JSON and
-JSONL with a documented format; [`docs/CONFORMANCE.md`](docs/CONFORMANCE.md)
+JSONL with a documented format; [`docs/CONFORMANCE.md`](https://github.com/Bombay-Boyz/jsonlogic-hs/blob/main/docs/CONFORMANCE.md)
 explains how to run them against your implementation.
 
 ## How it compares
 
 We ran seven other JsonLogic implementations against the same fixtures on
-2026-10-23. The full report is in [`docs/COMPARISON.md`](docs/COMPARISON.md).
-The runners and raw results are in [`harness/`](harness/).
+2026-10-23. The full report is in [`docs/COMPARISON.md`](https://github.com/Bombay-Boyz/jsonlogic-hs/blob/main/docs/COMPARISON.md).
+The runners and raw results are in [`harness/`](https://github.com/Bombay-Boyz/jsonlogic-hs/tree/main/harness/).
 
 **This is a fidelity test, not a neutral correctness benchmark.** The outlier
 catalogue records what json-logic-js 2.0.5 answered, so json-logic-js scores
@@ -158,8 +159,8 @@ against behaviour they do not aim for.
 
 **Note on the jsonlogic-hs row.** Its figures come from this repository's own
 test runners (`cabal test all`), which use the same fixtures and the judging
-rules in [`docs/CONFORMANCE.md`](docs/CONFORMANCE.md). The other rows were
-produced by the comparison harness in [`harness/`](harness/). jsonlogic-hs
+rules in [`docs/CONFORMANCE.md`](https://github.com/Bombay-Boyz/jsonlogic-hs/blob/main/docs/CONFORMANCE.md). The other rows were
+produced by the comparison harness in [`harness/`](https://github.com/Bombay-Boyz/jsonlogic-hs/tree/main/harness/). jsonlogic-hs
 itself has not been run through that harness, so its row did not go through
 exactly the same judge as the others.
 
@@ -194,8 +195,9 @@ exactly the same judge as the others.
 ## What it is not
 
 - **Not the JSON Logic 2.0 dialect** (`val`, `??`, `exists`, `try`/`throw`,
-  `NaN` as an error). That dialect is measured by the community suite and
-  tracked on the roadmap, not implemented.
+  `NaN` as an error). That dialect is what most of the community suite tests,
+  so a low score there reflects a different target, not a bug. It is not
+  implemented.
 - **Not a sandbox for custom operators.** The library bounds its own work and
   a custom operator's result, not the operator's own computation.
 - **Not a wall-clock timeout.** Limits bound work; add
@@ -210,7 +212,7 @@ cabal test all            # unit/property, classic suite, outliers, community sc
 
 The repository's `cabal.project` turns on what released builds do not:
 `-Werror`, the differential tester (needs Node.js; see
-[`differential/README.md`](differential/README.md)) and the benchmarks.
+[`differential/README.md`](https://github.com/Bombay-Boyz/jsonlogic-hs/blob/main/differential/README.md)) and the benchmarks.
 
 | Command | What it checks |
 | --- | --- |
@@ -219,23 +221,23 @@ The repository's `cabal.project` turns on what released builds do not:
 | `bash scripts/check-harness.sh` | the test runners fail when they should; the outlier fixture is current |
 | `bash scripts/verify-sdist.sh` | the package as Hackage would receive it |
 | `bash scripts/consumer-smoke.sh` | a separate project using only `JsonLogic` |
-| `bash scripts/bench.sh` | benchmarks, with their environment ([`bench/README.md`](bench/README.md)) |
+| `bash scripts/bench.sh` | benchmarks, with their environment ([`bench/README.md`](https://github.com/Bombay-Boyz/jsonlogic-hs/blob/main/bench/README.md)) |
 
 ## Further reading
 
-- [`docs/TUTORIAL.md`](docs/TUTORIAL.md): using the library, step by step.
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): how it is built, and why.
-- [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md): every difference from the reference.
-- [`docs/COMPARISON.md`](docs/COMPARISON.md): how other JsonLogic implementations score on these fixtures, and the limits of that comparison.
-- [`docs/LIMITS.md`](docs/LIMITS.md): resource limits and what a step is.
-- [`docs/CONFORMANCE.md`](docs/CONFORMANCE.md): using these fixtures to test any implementation.
-- [`docs/STABILITY.md`](docs/STABILITY.md): what is covered by the versioning policy.
-- [`docs/AUDIT-2026-10.md`](docs/AUDIT-2026-10.md): the external audit's findings and how each was resolved.
-- [`docs/adr/`](docs/adr/): recorded decisions and deviations from the engineering standard.
-- [`VISION.md`](VISION.md) and [`ENGINEERING_STANDARD.md`](ENGINEERING_STANDARD.md): the design and the rules this codebase follows.
+- [`docs/TUTORIAL.md`](https://github.com/Bombay-Boyz/jsonlogic-hs/blob/main/docs/TUTORIAL.md): using the library, step by step.
+- [`docs/ARCHITECTURE.md`](https://github.com/Bombay-Boyz/jsonlogic-hs/blob/main/docs/ARCHITECTURE.md): how it is built, and why.
+- [`docs/COMPATIBILITY.md`](https://github.com/Bombay-Boyz/jsonlogic-hs/blob/main/docs/COMPATIBILITY.md): every difference from the reference.
+- [`docs/COMPARISON.md`](https://github.com/Bombay-Boyz/jsonlogic-hs/blob/main/docs/COMPARISON.md): how other JsonLogic implementations score on these fixtures, and the limits of that comparison.
+- [`docs/LIMITS.md`](https://github.com/Bombay-Boyz/jsonlogic-hs/blob/main/docs/LIMITS.md): resource limits and what a step is.
+- [`docs/CONFORMANCE.md`](https://github.com/Bombay-Boyz/jsonlogic-hs/blob/main/docs/CONFORMANCE.md): using these fixtures to test any implementation.
+- [`docs/STABILITY.md`](https://github.com/Bombay-Boyz/jsonlogic-hs/blob/main/docs/STABILITY.md): what is covered by the versioning policy.
+- [`docs/AUDIT-2026-10.md`](https://github.com/Bombay-Boyz/jsonlogic-hs/blob/main/docs/AUDIT-2026-10.md): the external audit's findings and how each was resolved.
+- [`docs/adr/`](https://github.com/Bombay-Boyz/jsonlogic-hs/tree/main/docs/adr/): recorded decisions and deviations from the engineering standard.
+- [`VISION.md`](https://github.com/Bombay-Boyz/jsonlogic-hs/blob/main/VISION.md) and [`ENGINEERING_STANDARD.md`](https://github.com/Bombay-Boyz/jsonlogic-hs/blob/main/ENGINEERING_STANDARD.md): the design and the rules this codebase follows.
 
 ## Licence
 
-MIT. See [`LICENSE`](LICENSE). The vendored test suites keep their own
+MIT. See [`LICENSE`](https://github.com/Bombay-Boyz/jsonlogic-hs/blob/main/LICENSE). The vendored test suites keep their own
 licences: `test/community/` is Apache-2.0 (its `LICENSE` is included);
 `test/tests.json` is the shared classic suite from jsonlogic.com.
