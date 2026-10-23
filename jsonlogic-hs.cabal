@@ -7,24 +7,25 @@ description:
   (<https://jsonlogic.com>), a small, closed rule language that is itself
   JSON, so rules can be stored, shared between systems, and evaluated
   against data without running arbitrary code.
-  .
+
   It follows the JavaScript reference implementation, json-logic-js 2.0.5:
-  all 278 cases of the classic shared suite pass, and it gives the
-  reference's own answers on a committed catalogue of about 27,000
-  deliberately awkward rules (type coercion, UTF-16 strings, signed zero,
-  NaN, infinities, undefined, numeric edge cases, odd arities, and every rule
-  of the community suite), with a 140,000-case tier and thousands of random
-  rules checked against the reference in CI. The few deliberate differences
-  are listed in docs/COMPATIBILITY.md.
-  .
+  all 278 cases of the classic shared suite pass, and in lenient arity mode
+  it gives the reference's own answers on a committed catalogue of about
+  27,000 deliberately awkward rules (type coercion, UTF-16 strings, signed
+  zero, NaN, infinities, undefined, numeric edge cases, odd arities, and
+  every rule of the community suite), with a 140,000-case tier and thousands
+  of random rules checked against the reference in CI. The few deliberate
+  differences are listed in docs/COMPATIBILITY.md.
+
   Rules are compiled once and run many times. Evaluation is pure and bounded:
   rule depth, evaluation steps, string length and array length all have
-  configurable limits, so rules from an untrusted source cannot exhaust time
-  or memory. Every error carries the JSON Pointer of the rule node that
-  failed. Arity checking is strict by default and can be switched to the
-  reference's lenient behaviour. Custom operators are supplied by the caller,
-  and dataUse reports which parts of the data a rule can read.
-  .
+  configurable limits, so rules from an untrusted source cannot run
+  unbounded work or exhaust memory. Every error carries the JSON Pointer of
+  the rule node that failed. Arity checking is strict by default and can be
+  switched to the reference's lenient behaviour. Custom operators are
+  supplied by the caller, and dataUse reports which parts of the data a rule
+  can read.
+
   The supported API is the "JsonLogic" module; docs/TUTORIAL.md walks through
   it. The "JsonLogic.Core" modules are exposed for advanced use and may
   change before 1.0.

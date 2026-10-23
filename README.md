@@ -12,7 +12,7 @@ It is held to the JavaScript reference implementation,
 26,980-case catalogue of reference answers, the next closest implementation we
 tested scores 84.8% (see [How it compares](#how-it-compares)).
 
-Author: csn. Licence: MIT LICENSE.
+Author: Sabrinathan Nair. Licence: MIT LICENSE.
 **Status: release candidate, not yet on Hackage.**
 
 | | |
