@@ -57,7 +57,6 @@ shortestDigits d = (map digitToInt digits, length digits + exponent10)
     (coefficientDigits, exponent10) = shortestDecimal d
     digits = show coefficientDigits
 
-
 -- | 'shortestDigits' computed exactly, for every positive finite double.
 --
 -- GHC's 'floatToDigits' only accepts digit strings strictly inside the

@@ -7,7 +7,7 @@
 module RegressionSpec (spec) where
 
 import Control.DeepSeq (force)
-import Control.Exception (ErrorCall (..), evaluate, fromException, throwIO, try)
+import Control.Exception (Exception, evaluate, fromException, throw, throwIO, try)
 import Data.Aeson (Value (..), encode, object, toJSON, (.=))
 import qualified Data.Aeson.Key as Key
 import qualified Data.ByteString.Lazy.Char8 as Char8
@@ -38,21 +38,28 @@ withinSeconds seconds result = do
   outcome <- timeout (seconds * 1000000) (evaluate (Char8.length (encode (fromRight Null result)) `seq` result))
   maybe (expectationFailure ("did not finish in " ++ show seconds ++ " seconds") >> pure result) pure outcome
 
--- | A registry of custom operators; the names here are all fine.
+-- | A registry of custom operators. The names used here are all valid; if
+-- one were not, the registry is empty and the test that uses it fails on an
+-- unknown operator.
 registry :: [(Text, Value -> [Value] -> Either Text Value)] -> Operators
 registry entries =
-  either (error . show) id (operatorsFromList [(OperatorName name, implementation) | (name, implementation) <- entries])
+  fromRight noOperators (operatorsFromList [(OperatorName name, implementation) | (name, implementation) <- entries])
 
--- | A rule that compiles; the ones here all do.
-compiled :: Operators -> Value -> Rule
-compiled operators rule = either (error . renderErrorString) id (compile defaultConfig operators rule)
+-- | Compile a rule and hand it to the test, which fails if it does not compile.
+-- | What a custom operator throws in the tests below.
+data Boom = Boom
+  deriving (Eq, Show)
 
-renderErrorString :: Error -> String
-renderErrorString = Text.unpack . renderError
+instance Exception Boom
 
--- | The error of a failing application; the ones here all fail.
-failure :: Either Error Value -> Error
-failure = either id (error "expected a failure")
+withRule :: Operators -> Value -> (Rule -> IO ()) -> IO ()
+withRule operators rule test = case compile defaultConfig operators rule of
+  Left e -> expectationFailure ("did not compile: " ++ Text.unpack (renderError e))
+  Right ready -> test ready
+
+-- | Hand the test the error of an application, which fails if it succeeded.
+withFailure :: Either Error Value -> (Error -> IO ()) -> IO ()
+withFailure result test = either test (const (expectationFailure "expected a failure")) result
 
 isStepLimit :: Either Problem Value -> Bool
 isStepLimit (Left (EvalProblem (LimitExceeded (StepLimit _)))) = True
@@ -143,7 +150,7 @@ spec = describe "regressions" $ do
     -- 77...7, built in linear time
     let digitsOf n = 7 * ((10 ^ n - 1) `div` 9) :: Integer
         decimal :: Int -> Int -> Scientific
-        decimal digits power = scientific (digitsOf digits) power
+        decimal digits = scientific (digitsOf digits)
     it "a long JSON number reads as the nearest double" $
       mapM_
         (\(digits, power) -> scientificToDouble (decimal digits power) `shouldBe` fromRational (toRational (decimal digits power)))
@@ -169,18 +176,20 @@ spec = describe "regressions" $ do
 
   describe "exceptions and instances" $ do
     it "tryRun catches an exception thrown by a custom operator" $ do
-      let operators = registry [("boom", \_ _ -> error "kaboom")]
-      r <- tryRun (compiled operators (call "boom" [])) Null
-      case r of
-        Left e -> fmap (\(ErrorCall message) -> message) (fromException e) `shouldBe` Just "kaboom"
-        Right _ -> expectationFailure "the exception escaped tryRun's result"
+      let operators = registry [("boom", \_ _ -> throw Boom)]
+      withRule operators (call "boom" []) $ \ready -> do
+        r <- tryRun ready Null
+        case r of
+          Left e -> fromException e `shouldBe` Just Boom
+          Right _ -> expectationFailure "the exception escaped tryRun's result"
     it "tryRun returns an ordinary answer unchanged" $ do
-      r <- tryRun (compiled noOperators (call "+" [Number 1, Number 2])) Null
-      either (const Nothing) Just r `shouldBe` Just (Right (Number 3))
+      withRule noOperators (call "+" [Number 1, Number 2]) $ \ready -> do
+        r <- tryRun ready Null
+        either (const Nothing) Just r `shouldBe` Just (Right (Number 3))
     it "an Error can be thrown and caught" $ do
-      let e = failure (apply (call "nope" []) Null)
-      r <- try (throwIO e) :: IO (Either Error ())
-      r `shouldBe` Left e
+      withFailure (apply (call "nope" []) Null) $ \e -> do
+        r <- try (throwIO e) :: IO (Either Error ())
+        r `shouldBe` Left e
     it "an Error can be forced" $ do
-      let e = failure (apply (call "nope" []) Null)
-      force e `shouldBe` e
+      withFailure (apply (call "nope" []) Null) $ \e ->
+        force e `shouldBe` e
