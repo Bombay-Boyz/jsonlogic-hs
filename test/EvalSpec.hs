@@ -11,9 +11,9 @@ import Test.Hspec
 import Test.QuickCheck (Gen, choose, forAll, listOf, oneof)
 
 import JsonLogic hiding (Rule)
-import JsonLogic.Core.Eval (evaluate)
 import JsonLogic.Core.Location (root)
 import JsonLogic.Core.Rule (Node (..), Rule, RuleF (..))
+import Oracle (evaluate)
 import Support (Problem (..), at, problem)
 
 -- | Test cases are written with single quotes so the JSON stays readable.

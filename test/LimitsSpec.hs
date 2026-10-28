@@ -124,9 +124,14 @@ spec = describe "resource limits" $ do
       r <- within10s (run' defaultConfig rule Null)
       r `shouldBe` Left (EvalProblem (LimitExceeded (ArrayLimit 100000)))
     it "a very wide rule" $ do
+      -- within the node limit, so it is read and then stopped by the step limit
+      let wide = object ["+" .= replicate 900000 (1 :: Int)]
+      r <- within10s (problem (applyWithConfig defaultConfig{maxSteps = 500000} noOperators wide Null))
+      r `shouldSatisfy` isStepLimit
+    it "a rule wider than the node limit is refused before it is read" $ do
       let wide = object ["+" .= replicate 2000000 (1 :: Int)]
       r <- within10s (problem (applyWithConfig defaultConfig noOperators wide Null))
-      r `shouldSatisfy` isStepLimit
+      r `shouldBe` Left (ParseProblem (NodeLimitExceeded 1000000))
     it "a deeply nested datum is only read, never recursed into by the evaluator" $ do
       let deepData = foldr (\_ inner -> toJSON [inner]) Null [1 .. 20000 :: Int]
       r <- within10s (problem (applyWithConfig defaultConfig noOperators (object ["var" .= ("" :: String)]) deepData))

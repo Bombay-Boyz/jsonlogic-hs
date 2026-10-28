@@ -9,6 +9,7 @@ import qualified LimitsSpec
 import qualified LocationSpec
 import qualified NumberSpec
 import qualified ParseSpec
+import qualified RegressionSpec
 import qualified ValueSpec
 
 main :: IO ()
@@ -21,3 +22,4 @@ main = hspec $ do
   LimitsSpec.spec
   LocationSpec.spec
   AnalysisSpec.spec
+  RegressionSpec.spec

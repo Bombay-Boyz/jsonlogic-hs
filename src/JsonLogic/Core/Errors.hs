@@ -23,6 +23,8 @@ module JsonLogic.Core.Errors
   , renderParseError
   ) where
 
+import Control.DeepSeq (NFData (..))
+import Control.Exception (Exception)
 import Data.Text (Text)
 import qualified Data.Text as Text
 
@@ -45,6 +47,9 @@ data ParseError
     -- the operator, what it accepts, and how many it was given. Raised in
     -- strict arity mode only.
     ArityMismatch OperatorName Arity Int
+  | -- | The rule's JSON has more nodes than the configured limit (carried
+    -- here). Raised before anything is built.
+    NodeLimitExceeded Int
   deriving (Eq, Show)
 
 -- | Which resource limit stopped an evaluation, with the configured
@@ -125,6 +130,8 @@ renderParseError (DepthExceeded limit) =
   "the rule nests deeper than the limit of " <> shown limit
 renderParseError (ArityMismatch (OperatorName name) accepted given) =
   "operator " <> quoted name <> " takes " <> renderArity accepted <> ", but was given " <> shown given
+renderParseError (NodeLimitExceeded limit) =
+  "the rule has more than the limit of " <> shown limit <> " nodes"
 
 -- | A one-line description of an evaluation error, without its location.
 renderEvalError :: EvalError -> Text
@@ -154,3 +161,36 @@ shown = Text.pack . show
 
 quoted :: Text -> Text
 quoted name = "\"" <> name <> "\""
+
+-- | So that an 'Error' can be thrown, for callers that prefer exceptions.
+instance Exception Error
+
+instance NFData Arity where
+  rnf (Exactly n) = rnf n
+  rnf (AtLeast n) = rnf n
+  rnf (Between low high) = rnf low `seq` rnf high
+
+instance NFData ParseError where
+  rnf (DepthExceeded n) = rnf n
+  rnf (ArityMismatch name arity given) = rnf name `seq` rnf arity `seq` rnf given
+  rnf (NodeLimitExceeded n) = rnf n
+
+instance NFData LimitKind where
+  rnf (StepLimit n) = rnf n
+  rnf (StringLimit n) = rnf n
+  rnf (ArrayLimit n) = rnf n
+  rnf (ValueDepthLimit n) = rnf n
+
+instance NFData EvalError where
+  rnf (UnknownOperator name) = rnf name
+  rnf (CustomOperatorFailed name reason) = rnf name `seq` rnf reason
+  rnf (InvalidOperand name) = rnf name
+  rnf (LimitExceeded kind) = rnf kind
+
+instance NFData OperatorsError where
+  rnf (ReservedOperatorName name) = rnf name
+  rnf (DuplicateOperatorName name) = rnf name
+
+instance NFData Error where
+  rnf (ParseFailure location problem) = rnf location `seq` rnf problem
+  rnf (EvalFailure location problem) = rnf location `seq` rnf problem

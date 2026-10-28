@@ -24,12 +24,10 @@ module JsonLogic.Core.Rule
   ( RuleF (..)
   , Node (..)
   , Rule
-  , Term
-  , stripLocations
   ) where
 
 import Data.Aeson (Value)
-import Data.Fix (Fix (..), foldFix)
+import Data.Fix (Fix (..))
 import Data.Foldable (toList)
 import Data.Functor (void)
 import Data.Functor.Classes (Eq1 (..), Show1 (..))
@@ -169,13 +167,6 @@ instance Show1 Node where
 
 -- | A rule as read from JSON: every node carries its 'Location'.
 type Rule = Fix Node
-
--- | A rule tree without locations, for comparing shapes.
-type Term = Fix RuleF
-
--- | Forget where every node came from.
-stripLocations :: Rule -> Term
-stripLocations = foldFix (Fix . nodeRule)
 
 -- | A value shown by a function, so that a derived 'Show' can be reused to
 -- write 'Show1' instances.

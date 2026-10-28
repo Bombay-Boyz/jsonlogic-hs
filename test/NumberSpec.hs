@@ -15,6 +15,7 @@ import Test.Hspec.QuickCheck (modifyMaxSuccess)
 import Test.QuickCheck hiding ((.&.))
 
 import JsonLogic.Core.Number
+import Oracle (shortestDigits, shortestDigitsExact)
 
 -- | Any positive finite double, from its bit pattern.
 genAnyDouble :: Gen Double

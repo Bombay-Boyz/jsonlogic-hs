@@ -16,8 +16,9 @@ import JsonLogic.Core.Config (ArityMode (..), Config (..), defaultConfig)
 import JsonLogic.Core.Errors (Arity (..), ParseError (..))
 import JsonLogic.Core.Location (Location, root)
 import JsonLogic.Core.Operator (OperatorName (..), allBuiltins, builtinName, lookupBuiltin)
-import JsonLogic.Core.Parse (parseRule, parseRuleWith)
-import JsonLogic.Core.Rule (Node (..), Rule, RuleF (..), Term, stripLocations)
+import JsonLogic.Core.Parse (parseRuleWith)
+import JsonLogic.Core.Rule (Node (..), Rule, RuleF (..))
+import Oracle (Term, parseRule, stripLocations)
 import Support (at, json)
 
 lit :: Value -> Term

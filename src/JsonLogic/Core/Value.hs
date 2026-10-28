@@ -36,6 +36,7 @@ module JsonLogic.Core.Value
   , nestsDeeperThan
   , jsonWeightUpTo
   , valWeightUpTo
+  , saturatingSucc
   ) where
 
 import qualified Data.Aeson as Aeson
@@ -68,7 +69,20 @@ data Val
   | VStr !Text
   | VArr !(Vector Val)
   | VObj !(KeyMap.KeyMap Val)
-  deriving (Eq, Show)
+  deriving (Show)
+
+-- | Structural equality, in which @NaN@ equals @NaN@, so that equality is
+-- reflexive. (This is not JavaScript's @==@, which is 'looseEquals', nor its
+-- @===@, which is 'strictEquals'; it compares evaluation results.)
+instance Eq Val where
+  VNull == VNull = True
+  VUndefined == VUndefined = True
+  VBool a == VBool b = a == b
+  VNum a == VNum b = a == b || (isNaN a && isNaN b)
+  VStr a == VStr b = a == b
+  VArr a == VArr b = a == b
+  VObj a == VObj b = a == b
+  _ == _ = False
 
 -- ---------------------------------------------------------------------
 -- Conversion to and from JSON
@@ -101,6 +115,12 @@ toValue (VObj fields) = Aeson.Object (KeyMap.map toValue (KeyMap.filter (not . i
   where
     isUndefined VUndefined = True
     isUndefined _ = False
+
+-- | One more, except at 'maxBound', where it stays: a limit of 'maxBound'
+-- means "no limit", and a bound written as @limit + 1@ must not wrap round
+-- to 'minBound' and refuse everything.
+saturatingSucc :: Int -> Int
+saturatingSucc n = if n == maxBound then n else n + 1
 
 -- | Does a JSON value nest more than @n@ levels? An array or object that is
 -- not empty is one level; a scalar is none. Stops as soon as it knows, so

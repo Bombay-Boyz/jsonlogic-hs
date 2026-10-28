@@ -29,7 +29,6 @@ module JsonLogic.Core.Eval
   ( Program
   , compileRule
   , runProgram
-  , evaluate
   ) where
 
 import Control.Monad (foldM, when)
@@ -42,11 +41,12 @@ import qualified Data.List as List
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as Text
+import Data.Text.Unsafe (lengthWord8)
 import Data.Vector (Vector)
 import qualified Data.Vector as Vector
 
-import JsonLogic.Core.Config (Config (..), defaultConfig)
-import JsonLogic.Core.Custom (Operators, lookupOperator, noOperators)
+import JsonLogic.Core.Config (Config (..))
+import JsonLogic.Core.Custom (Operators, lookupOperator)
 import JsonLogic.Core.Errors (EvalError (..), LimitKind (..))
 import JsonLogic.Core.Location (Location)
 import JsonLogic.Core.Number (maximumJs, minimumJs, remainderJs)
@@ -112,52 +112,113 @@ spend (At config location) n = Run $ \budget ->
     else Done () (budget - n)
 {-# INLINE spend #-}
 
--- | Spend steps for converting an operand to a string or number, which
--- costs as many steps as an array operand has elements, at any depth.
--- Every other value converts for free.
+-- | Spend steps for converting an operand to a string, which costs as many
+-- steps as an array operand has elements, at any depth. Every other value
+-- converts for free.
 spendOnConversion :: At -> Val -> Run ()
 spendOnConversion at value = case value of
-  VArr _ -> Run $ \budget -> unRun (spend at (valWeightUpTo (budget + 1) value)) budget
+  VArr _ -> Run $ \budget -> unRun (spend at (valWeightUpTo (saturatingSucc budget) value)) budget
   _ -> pure ()
+
+-- | How many bytes of a string one step pays for when an operator only
+-- /scans/ it (compares, searches, slices): the cost of a scan is its length,
+-- whatever the rule around it looks like, so a string is charged by length,
+-- from a length that is known in constant time. Short strings cost nothing
+-- extra.
+bytesPerScanStep :: Int
+bytesPerScanStep = 64
+
+-- | The same when an operator may /read a string as a number/, which is
+-- about ten times the work per byte of a scan.
+bytesPerReadStep :: Int
+bytesPerReadStep = 8
+
+-- | Spend steps for an operand an operator scans: an array by its elements,
+-- a string by its length.
+spendOnScan :: At -> Val -> Run ()
+spendOnScan at value = case value of
+  VStr _ -> spendOnString at value
+  _ -> spendOnConversion at value
+
+-- | Spend steps for a string an operator scans, and nothing for any other
+-- operand.
+spendOnString :: At -> Val -> Run ()
+spendOnString at (VStr s) = spend at (lengthWord8 s `quot` bytesPerScanStep)
+spendOnString _ _ = pure ()
+
+-- | Spend steps for an operand an operator may read as a number: an array
+-- by its elements, a string by its length at the reading rate.
+spendOnReading :: At -> Val -> Run ()
+spendOnReading at value = case value of
+  VStr s -> spend at (lengthWord8 s `quot` bytesPerReadStep)
+  _ -> spendOnConversion at value
+
+-- | Spend steps for two operands that are compared or equated. If both are
+-- strings (arrays and objects compare as the strings they convert to) the
+-- comparison scans them; otherwise a string is read as a number.
+spendOnComparison :: At -> Val -> Val -> Run ()
+spendOnComparison at a b
+  | stringlike a && stringlike b = spendOnScan at a >> spendOnScan at b
+  | otherwise = spendOnReading at a >> spendOnReading at b
+  where
+    stringlike v = case v of
+      VStr _ -> True
+      VArr _ -> True
+      VObj _ -> True
+      _ -> False
 
 -- ---------------------------------------------------------------------
 -- Compiling and running
 -- ---------------------------------------------------------------------
 
+-- | The datum a node is evaluated against: the value, and the same datum as
+-- JSON, which a custom operator is handed. The JSON is built the first time
+-- it is asked for and then shared by every node evaluated against this
+-- datum, so an operator that reads one field of a large datum does not
+-- rebuild the whole of it on every call. At the root it is the input itself.
+data Env = Env
+  { envValue :: !Val
+  , envJson :: Aeson.Value
+  }
+
+-- | A datum that came from evaluation: its JSON is built when needed.
+mkEnv :: Val -> Env
+mkEnv value = Env value (toValue value)
+
 -- | A rule compiled to a function of the data.
-type Eval = Val -> Run Val
+type Eval = Env -> Run Val
 
 -- | A compiled node: its code, and its value if it is a literal (so that a
 -- parent can do work ahead of time, such as splitting a @var@ path once).
+-- Strict, so that compiling a rule builds all of it, not just its root.
 data Compiled = Compiled
-  { compiledLiteral :: Maybe Val
-  , compiledEval :: Eval
+  { compiledLiteral :: !(Maybe Val)
+  , compiledEval :: !Eval
   }
 
 -- | A compiled rule, with the configuration it was compiled with.
-data Program = Program !Config Eval
+data Program = Program !Config !Eval
 
 -- | Compile a rule once: convert its literals, resolve its custom operators
--- against the registry, and build each node's code.
+-- against the registry, and build each node's code. All of the work is done
+-- when the result is first demanded, not spread over the first run.
 compileRule :: Config -> Operators -> Rule -> Program
-compileRule config operators rule =
-  Program config (compiledEval (foldFix (compileNode config operators) rule))
+compileRule config operators rule = case foldFix (compileNode config operators) rule of
+  Compiled _ eval -> Program config eval
 
 -- | Run a compiled rule against some data, with the configured step budget.
 runProgram :: Program -> Aeson.Value -> Either (Location, EvalError) Aeson.Value
 runProgram (Program config eval) input =
-  case unRun (eval (fromValue input)) (maxSteps config) of
+  case unRun (eval (Env (fromValue input) input)) (maxSteps config) of
     Failed location e -> Left (location, e)
     Done result _ -> Right (toValue result)
-
--- | Compile and run with 'defaultConfig' and no custom operators.
-evaluate :: Rule -> Aeson.Value -> Either (Location, EvalError) Aeson.Value
-evaluate = runProgram . compileRule defaultConfig noOperators
 
 -- | One layer of the fold: given each child already compiled, compile this
 -- node. Evaluating a node costs one step, before its own work.
 compileNode :: Config -> Operators -> Node Compiled -> Compiled
-compileNode config operators (Node location node) = Compiled literal (\env -> spend at 1 >> body env)
+compileNode config operators (Node location node) =
+  -- every child, then this node's own code, is built before the node is
+  foldr seq () node `seq` body `seq` Compiled literal (\env -> spend at 1 >> body env)
   where
     at = At config location
     literal = case node of
@@ -182,22 +243,22 @@ compileBody at@(At config _) operators node = case node of
   Missing keys -> \env -> do
     names <- evalAll keys env
     mapM_ (spendOnConversion at) names
-    let (work, absent) = missingKeys (workCap config) names env
+    let (work, absent) = missingKeys (workCap config) names (envValue env)
     spend at work
     pure (VArr (Vector.fromList absent))
   MissingSome needed options -> \env -> do
     count <- needed env
     listed <- options env
-    missingSome at count listed env
+    missingSome at count listed (envValue env)
   If branches -> evalIf branches
   And operands -> evalAnd operands
   Or operands -> evalOr operands
   Not operand -> fmap (VBool . not . truthy) . operand
   DoubleNot operand -> fmap (VBool . truthy) . operand
   LooseEq x y -> coercing at (\a b -> VBool (looseEquals a b)) x y
-  StrictEq x y -> binary (\a b -> VBool (strictEquals a b)) x y
+  StrictEq x y -> binary at (\a b -> VBool (strictEquals a b)) x y
   LooseNeq x y -> coercing at (\a b -> VBool (not (looseEquals a b))) x y
-  StrictNeq x y -> binary (\a b -> VBool (not (strictEquals a b))) x y
+  StrictNeq x y -> binary at (\a b -> VBool (not (strictEquals a b))) x y
   Lt x y z -> between at lessThan x y z
   Lte x y z -> between at lessOrEqual x y z
   Gt x y -> coercing at (\a b -> VBool (lessThan b a)) x y
@@ -209,8 +270,8 @@ compileBody at@(At config _) operators node = case node of
   Sub x y -> \env -> do
     a <- x env
     b <- definedOperand <$> traverse ($ env) y
-    spendOnConversion at a
-    mapM_ (spendOnConversion at) b
+    spendOnReading at a
+    mapM_ (spendOnReading at) b
     pure (VNum (maybe (negate (toNumber a)) (\v -> toNumber a - toNumber v) b))
   Mul [] -> const (failAt at (InvalidOperand (builtinOperatorName BMul)))
   Mul (first : rest) -> \env -> do
@@ -218,28 +279,28 @@ compileBody at@(At config _) operators node = case node of
     -- it is, not converted to a number
     a <- first env
     bs <- evalAll rest env
-    mapM_ (spendOnConversion at) (a : bs)
+    mapM_ (spendOnReading at) (a : bs)
     pure (List.foldl' (\acc v -> VNum (parseFloat acc * parseFloat v)) a bs)
   Div x y -> coercing at (\a b -> VNum (toNumber a / toNumber b)) x y
   Mod x y -> coercing at (\a b -> VNum (remainderJs (toNumber a) (toNumber b))) x y
   Map collection logic ->
     withCollection collection (VArr Vector.empty) $ \items -> do
       guardInput at items
-      VArr <$> Vector.mapM logic items
+      VArr <$> Vector.mapM (logic . mkEnv) items
   Filter collection logic ->
     withCollection collection (VArr Vector.empty) $ \items -> do
       guardInput at items
-      VArr <$> Vector.filterM (fmap truthy . logic) items
+      VArr <$> Vector.filterM (fmap truthy . logic . mkEnv) items
   Reduce collection logic initial -> reduceRule collection logic initial
   All collection logic ->
     withCollection collection (VBool False) $ \items ->
-      if Vector.null items then pure (VBool False) else VBool <$> allTruthy logic (Vector.toList items)
+      if Vector.null items then pure (VBool False) else VBool <$> allTruthy (logic . mkEnv) (Vector.toList items)
   None collection logic ->
     withCollection collection (VBool True) $ \items ->
-      if Vector.null items then pure (VBool True) else VBool . not <$> anyTruthy logic (Vector.toList items)
+      if Vector.null items then pure (VBool True) else VBool . not <$> anyTruthy (logic . mkEnv) (Vector.toList items)
   Some collection logic ->
     withCollection collection (VBool False) $ \items ->
-      if Vector.null items then pure (VBool False) else VBool <$> anyTruthy logic (Vector.toList items)
+      if Vector.null items then pure (VBool False) else VBool <$> anyTruthy (logic . mkEnv) (Vector.toList items)
   Merge operands -> \env -> do
     values <- evalAll operands env
     let pieces = map flattenOnce values
@@ -247,7 +308,7 @@ compileBody at@(At config _) operators node = case node of
     when (size > maxArrayLength config) $ exceeded at (ArrayLimit . maxArrayLength)
     spend at size
     pure (VArr (Vector.concat pieces))
-  In needle haystack -> coercing at (\a b -> VBool (contains a b)) needle haystack
+  In needle haystack -> scanning at (\a b -> VBool (contains a b)) needle haystack
   Cat operands -> \env -> do
     values <- evalAll operands env
     mapM_ (spendOnConversion at) values
@@ -259,7 +320,7 @@ compileBody at@(At config _) operators node = case node of
     text <- source env
     from <- start env
     limit <- definedOperand <$> traverse ($ env) len
-    spendOnConversion at text
+    spendOnScan at text
     pure (VStr (substring (toJsString text) from limit))
   Log operand -> operand
   Discard inner extras -> \env -> do
@@ -270,12 +331,12 @@ compileBody at@(At config _) operators node = case node of
     Nothing -> \env -> evalAll operands env >> failAt at (UnknownOperator name)
     Just implementation -> \env -> do
       arguments <- evalAll operands env
-      case implementation (toValue env) (map toValue arguments) of
+      case implementation (envJson env) (map toValue arguments) of
         Left reason -> failAt at (CustomOperatorFailed name reason)
         Right result -> do
           when (nestsDeeperThan (maxDepth config) result) $
             exceeded at (ValueDepthLimit . maxDepth)
-          spend at (jsonWeightUpTo (maxSteps config + 1) result)
+          spend at (jsonWeightUpTo (saturatingSucc (maxSteps config)) result)
           pure (fromValue result)
 
 -- | @var@: evaluate the path (for its step and its failures), turn its value
@@ -284,7 +345,7 @@ variable :: At -> Eval -> Maybe Eval -> (Val -> Run Path) -> Eval
 variable at@(At config _) path fallback toPath env = do
   key <- path env >>= toPath
   notFound <- maybe (pure VNull) ($ env) fallback
-  let (work, found) = lookupPath (workCap config) env key notFound
+  let (work, found) = lookupPath (workCap config) (envValue env) key notFound
   spend at work
   pure found
 
@@ -292,28 +353,43 @@ variable at@(At config _) path fallback toPath env = do
 -- Combinators over compiled operands
 -- ---------------------------------------------------------------------
 
-evalAll :: [Eval] -> Val -> Run [Val]
+evalAll :: [Eval] -> Env -> Run [Val]
 evalAll operands env = traverse ($ env) operands
 
--- | Two operands, no conversion cost (the combiner never walks an array).
-binary :: (Val -> Val -> Val) -> Eval -> Eval -> Eval
-binary combine x y env = combine <$> x env <*> y env
+-- | Two operands the combiner compares without converting: no cost for an
+-- array (it is never walked), and a string costs by its length.
+binary :: At -> (Val -> Val -> Val) -> Eval -> Eval -> Eval
+binary at combine x y env = do
+  a <- x env
+  b <- y env
+  spendOnString at a
+  spendOnString at b
+  pure (combine a b)
 
--- | Two operands that the combiner may convert to a string or number,
--- which costs as many steps as an array operand has elements.
+-- | Two operands that the combiner may convert to a string or number, or
+-- compare or search ('spendOnComparison').
 coercing :: At -> (Val -> Val -> Val) -> Eval -> Eval -> Eval
 coercing at combine x y env = do
   a <- x env
   b <- y env
-  spendOnConversion at a
-  spendOnConversion at b
+  spendOnComparison at a b
+  pure (combine a b)
+
+-- | Two operands the combiner scans, a string by its length and an array by
+-- its elements.
+scanning :: At -> (Val -> Val -> Val) -> Eval -> Eval -> Eval
+scanning at combine x y env = do
+  a <- x env
+  b <- y env
+  spendOnScan at a
+  spendOnScan at b
   pure (combine a b)
 
 -- | Operands about to be converted to numbers, charged for the conversion.
-numeric :: At -> [Eval] -> Val -> Run [Val]
+numeric :: At -> [Eval] -> Env -> Run [Val]
 numeric at operands env = do
   values <- evalAll operands env
-  mapM_ (spendOnConversion at) values
+  mapM_ (spendOnReading at) values
   pure values
 
 -- | @x op y@, or the chained @x op y && y op z@ when a third operand is
@@ -323,8 +399,8 @@ between at holds x y z env = do
   a <- x env
   b <- y env
   c <- definedOperand <$> traverse ($ env) z
-  mapM_ (spendOnConversion at) [a, b]
-  mapM_ (spendOnConversion at) c
+  spendOnComparison at a b
+  mapM_ (spendOnComparison at b) c
   pure (VBool (maybe (holds a b) (\third -> holds a b && holds b third) c))
 
 -- | Condition/consequent pairs, then an optional else; no branch means null.
@@ -397,13 +473,13 @@ reduceRule collection logic initial env = do
     _ -> pure start
   where
     step accumulator item =
-      logic (VObj (KeyMap.fromList [("current", item), ("accumulator", accumulator)]))
+      logic (mkEnv (VObj (KeyMap.fromList [("current", item), ("accumulator", accumulator)])))
 
 -- | Does the sub-rule hold for every item? Stops at the first that does not.
 --
 -- Hand-written recursion (Standard 4.1): a monadic @all@, which @base@ does
 -- not provide, in 'Run'.
-allTruthy :: Eval -> [Val] -> Run Bool
+allTruthy :: (Val -> Run Val) -> [Val] -> Run Bool
 allTruthy _ [] = pure True
 allTruthy logic (item : rest) = do
   value <- logic item
@@ -413,7 +489,7 @@ allTruthy logic (item : rest) = do
 --
 -- Hand-written recursion (Standard 4.1): a monadic @any@, the dual of
 -- 'allTruthy'.
-anyTruthy :: Eval -> [Val] -> Run Bool
+anyTruthy :: (Val -> Run Val) -> [Val] -> Run Bool
 anyTruthy _ [] = pure False
 anyTruthy logic (item : rest) = do
   value <- logic item
@@ -499,7 +575,7 @@ missingSome at@(At config _) count options env = case options of
 -- | The most work a lookup is followed for: one more than the whole budget,
 -- so a lookup that cannot be paid for is cut short rather than completed.
 workCap :: Config -> Int
-workCap config = maxSteps config + 1
+workCap config = saturatingSucc (maxSteps config)
 
 -- | A @var@ path, read: the data itself, or the property names to follow.
 data Path = WholeData | Steps [Text]
