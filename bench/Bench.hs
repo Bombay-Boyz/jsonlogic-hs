@@ -4,14 +4,23 @@
 -- Benchmarks (Standard 5.6): statistically sound timing and allocation of
 -- the engine, by tasty-bench.
 --
--- Four groups, so each cost is read on its own:
+-- Five groups, so each cost is read on its own:
 --
 -- * @one-shot@: 'apply', which reads the rule and evaluates it, the cost of
 --   a rule used once.
--- * @compile only@: reading a rule, with no evaluation.
+-- * @compile only@: reading a rule and building all of its code, with no
+--   evaluation.
 -- * @precompiled run@: 'run' of a rule read beforehand, the cost of a rule
 --   used many times. One-shot minus this is the reading cost.
--- * @limits@: a rule that stops at a resource limit.
+-- * @limits@: a rule that stops at a resource limit, and is refused before
+--   it is read.
+-- * @large inputs@: the shapes that were once able to do far more work than
+--   the step budget showed: long strings, huge numbers, wide rules, a custom
+--   operator over a large datum. Each is held to its budget here, so a
+--   regression shows as time.
+--
+-- Every result is forced with 'nf', not by encoding it: what is timed is
+-- the engine, not the JSON encoder.
 --
 -- Large inputs live in the /data/, built once, and every rule or datum
 -- depends on the argument tasty-bench passes in, so GHC cannot lift a
@@ -25,19 +34,14 @@
 -- runs on one machine; see bench/README.md.
 module Main (main) where
 
-import Data.Aeson (Value (..), encode, object, toJSON, (.=))
+import Data.Aeson (Value (..), object, toJSON, (.=))
 import qualified Data.Aeson.Key as Key
-import qualified Data.ByteString.Lazy as LBS
 import Data.Either (fromRight)
+import Data.Scientific (scientific)
 import qualified Data.Text as Text
-import Test.Tasty.Bench (Benchmark, bench, bgroup, defaultMain, whnf)
+import Test.Tasty.Bench (Benchmark, bench, bgroup, defaultMain, nf)
 
 import JsonLogic
-
--- | The size of the encoded answer: forces the whole result, and gives the
--- benchmark an 'Int' to hold on to.
-size :: Either Error Value -> Int
-size = fromIntegral . LBS.length . encode . fromRight Null
 
 num :: Int -> Value
 num = toJSON
@@ -98,28 +102,68 @@ workloads =
 
 oneShot :: (String, Int -> Value) -> Benchmark
 oneShot (name, rule) =
-  bench name (whnf (\n -> size (applyWith customOps (rule n) (dataFor n))) 1)
+  bench name (nf (\n -> applyWith customOps (rule n) (dataFor n)) 1)
 
-verdict :: Either Error Rule -> Int
-verdict = either (const 0) (const 1)
-
+-- | 'compile' builds all of a rule's code, so forcing it times all of that.
 compileOnly :: (String, Int -> Value) -> Benchmark
 compileOnly (name, rule) =
-  bench name (whnf (verdict . compile defaultConfig customOps . rule) 1)
+  bench name (nf (compile defaultConfig customOps . rule) 1)
 
 -- | The rule is read once, outside the timing loop; only 'run' is timed.
 precompiledRun :: (String, Int -> Value) -> Benchmark
 precompiledRun (name, rule) =
-  bench name (whnf (\n -> maybe 0 (\r -> size (run r (dataFor n))) compiled) 1)
+  bench name (nf (\n -> fmap (\r -> run r (dataFor n)) compiled) 1)
   where
-    compiled = either (const Nothing) Just (compile defaultConfig customOps (rule 0))
+    compiled = compile defaultConfig customOps (rule 0)
 
 -- | 110,000 operands against a limit of 100,000 steps: the cost of being
 -- refused.
 limitHit :: Benchmark
 limitHit =
   bench "step limit reached, 110,000 operands" $
-    whnf (\n -> size (applyWithConfig defaultConfig{maxSteps = 100000} customOps (call "+" (num n : replicate 110000 (num 1))) Null)) 1
+    nf (\n -> applyWithConfig defaultConfig{maxSteps = 100000} customOps (call "+" (num n : replicate 110000 (num 1))) Null) 1
+
+-- | Twice the node limit: refused before any of it is read.
+nodeLimitHit :: Benchmark
+nodeLimitHit =
+  bench "node limit reached, 2,000,000 operands" $
+    nf (\n -> applyWith customOps (call "+" (num n : replicate 2000000 (num 1))) Null) 1
+
+-- ---------------------------------------------------------------------
+-- Large inputs
+-- ---------------------------------------------------------------------
+
+-- | A 1,000,000-character string, built once.
+bigString :: Value
+bigString = String (Text.replicate 1000000 "a")
+
+-- | A 100,000-key object, built once.
+bigObject :: Value
+bigObject = object [Key.fromText (Text.pack ("k" ++ show i)) .= i | i <- [1 .. 100000 :: Int]]
+
+-- | A decimal number of 200,000 digits, built once.
+bigNumber :: Value
+bigNumber = Number (scientific (10 ^ (200000 :: Int) + 12345) (-200000))
+
+-- | Operators that read, compare and search a 1,000,000-character string, a
+-- number of times each: far more than the step budget allows for the long
+-- ones, so these are timed refusals, and the one-use rows are timed work.
+largeInputs :: [(String, Int -> (Value, Value))]
+largeInputs =
+  [ ("one comparison of two 1M-character strings", \n -> (call "<" [var "big", var "big"], withBig n))
+  , ("one substr of a 1M-character string", \n -> (call "substr" [var "big", num 0, num 1], withBig n))
+  , ("one search of a 1M-character string", \n -> (call "in" ["b", var "big"], withBig n))
+  , ("1,000 comparisons of 1M-character strings, refused", \n -> (call "+" (replicate 1000 (call "<" [var "big", var "big"])), withBig n))
+  , ("a 200,000-digit JSON number read", \n -> (call "+" [var "number", num n], withBig n))
+  , ("custom operator, 200 calls over a 100,000-key datum", \n -> (call "+" (replicate 200 (call "double" [num n])), bigObject))
+  , ("100,000-operand rule", \n -> (call "+" (num n : replicate 100000 (num 1)), Null))
+  ]
+  where
+    withBig n = object ["big" .= bigString, "number" .= bigNumber, "n" .= n]
+
+largeInput :: (String, Int -> (Value, Value)) -> Benchmark
+largeInput (name, workload) =
+  bench name (nf (\n -> let (rule, dat) = workload n in applyWith customOps rule dat) 1)
 
 main :: IO ()
 main =
@@ -127,5 +171,6 @@ main =
     [ bgroup "one-shot" (map oneShot workloads)
     , bgroup "compile only" (map compileOnly workloads)
     , bgroup "precompiled run" (map precompiledRun workloads)
-    , bgroup "limits" [limitHit]
+    , bgroup "limits" [limitHit, nodeLimitHit]
+    , bgroup "large inputs" (map largeInput largeInputs)
     ]

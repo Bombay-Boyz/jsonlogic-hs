@@ -22,8 +22,7 @@
 -- evaluates them ('Discard'). How each builtin treats its operands is stated
 -- once, in @shapeOf@.
 module JsonLogic.Core.Parse
-  ( parseRule
-  , parseRuleWith
+  ( parseRuleWith
   ) where
 
 import Data.Aeson (Value (..))
@@ -33,7 +32,7 @@ import Data.Fix (unfoldFixM)
 import Data.Foldable (toList)
 import Data.Text (Text)
 
-import JsonLogic.Core.Config (ArityMode (..), Config (..), defaultConfig)
+import JsonLogic.Core.Config (ArityMode (..), Config (..))
 import JsonLogic.Core.Errors (Arity (..), ParseError (..))
 import JsonLogic.Core.Location (Location, Segment (..), child, root)
 import JsonLogic.Core.Operator
@@ -43,16 +42,17 @@ import JsonLogic.Core.Operator
   , lookupBuiltin
   )
 import JsonLogic.Core.Rule (Node (..), Rule, RuleF (..))
-import JsonLogic.Core.Value (nestsDeeperThan)
+import JsonLogic.Core.Value (jsonWeightUpTo, nestsDeeperThan, saturatingSucc)
 
--- | Read a rule with 'defaultConfig'.
-parseRule :: Value -> Either (Location, ParseError) Rule
-parseRule = parseRuleWith defaultConfig
-
--- | Read a rule with the configured depth limit and arity mode. A failure
--- says where in the rule it happened.
+-- | Read a rule with the configured depth limit, node limit and arity mode.
+-- A failure says where in the rule it happened. A rule with too many nodes
+-- is refused before any of it is read.
 parseRuleWith :: Config -> Value -> Either (Location, ParseError) Rule
-parseRuleWith config value = unfoldFixM (step config) (Seed 0 root (Json value))
+parseRuleWith config value
+  | jsonWeightUpTo (saturatingSucc limit) value > limit = Left (root, NodeLimitExceeded limit)
+  | otherwise = unfoldFixM (step config) (Seed 0 root (Json value))
+  where
+    limit = maxNodes config
 
 -- | Something still to read: how many levels deep it is, where it is, and
 -- what it is.

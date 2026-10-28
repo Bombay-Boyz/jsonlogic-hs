@@ -23,6 +23,7 @@ module JsonLogic.Core.Analysis
   , dataUse
   ) where
 
+import Control.DeepSeq (NFData (..))
 import Data.Aeson (Value (..))
 import Data.Fix (foldFix)
 import qualified Data.Set as Set
@@ -34,13 +35,16 @@ import JsonLogic.Core.Value (fromValue, toJsString)
 
 -- | What a rule can read from its data.
 data DataUse = DataUse
-  { usedPaths :: [Text]
+  { usedPaths :: ![Text]
   -- ^ The paths it can read, sorted and without duplicates.
-  , usesAllData :: Bool
+  , usesAllData :: !Bool
   -- ^ Whether it can read anything else, so that 'usedPaths' is not the
   -- whole story.
   }
   deriving (Eq, Show)
+
+instance NFData DataUse where
+  rnf (DataUse paths whole) = rnf paths `seq` rnf whole
 
 -- | What the rule can read, as a set while it is built.
 data Reads = Reads !(Set.Set Text) !Bool

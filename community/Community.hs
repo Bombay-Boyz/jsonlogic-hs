@@ -134,6 +134,7 @@ errorType :: Error -> Text
 errorType failure = case failure of
   ParseFailure _ (ArityMismatch{}) -> "Invalid Arguments"
   ParseFailure _ (DepthExceeded _) -> "Limit Exceeded"
+  ParseFailure _ (NodeLimitExceeded _) -> "Limit Exceeded"
   EvalFailure _ (UnknownOperator _) -> "Unknown Operator"
   EvalFailure _ (InvalidOperand _) -> "Invalid Arguments"
   EvalFailure _ (CustomOperatorFailed _ reason) -> reason

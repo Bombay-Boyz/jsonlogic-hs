@@ -24,6 +24,7 @@ module JsonLogic.Core.Location
   , renderLocation
   ) where
 
+import Control.DeepSeq (NFData (..))
 import Data.Text (Text)
 import qualified Data.Text as Text
 
@@ -35,10 +36,17 @@ data Segment
     Index !Int
   deriving (Eq, Ord, Show)
 
+instance NFData Segment where
+  rnf (Key key) = rnf key
+  rnf (Index i) = rnf i
+
 -- | A path from the root of a rule. Held innermost-first, so that stepping
 -- into a child while reading a rule is constant time.
 newtype Location = Location [Segment]
   deriving (Eq, Ord)
+
+instance NFData Location where
+  rnf (Location segments) = rnf segments
 
 -- | Shown as the 'fromSegments' call that rebuilds it.
 instance Show Location where

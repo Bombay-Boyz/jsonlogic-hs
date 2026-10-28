@@ -19,6 +19,7 @@ module JsonLogic.Core.Operator
   , lookupBuiltin
   ) where
 
+import Control.DeepSeq (NFData (..))
 import qualified Data.Map.Strict as Map
 import Data.Text (Text)
 
@@ -27,6 +28,9 @@ import Data.Text (Text)
 -- string.
 newtype OperatorName = OperatorName Text
   deriving (Eq, Ord, Show)
+
+instance NFData OperatorName where
+  rnf (OperatorName name) = rnf name
 
 -- | The operators of the classic JsonLogic specification
 -- (<https://jsonlogic.com/operations.html>), as implemented by the reference,

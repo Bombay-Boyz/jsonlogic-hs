@@ -1,3 +1,5 @@
+{-# LANGUAGE BangPatterns #-}
+
 -- |
 -- Module      : JsonLogic
 --
@@ -32,6 +34,7 @@ module JsonLogic
   , Rule
   , compile
   , run
+  , tryRun
 
     -- * What a rule reads
   , DataUse (..)
@@ -67,6 +70,8 @@ module JsonLogic
   , renderLocation
   ) where
 
+import Control.DeepSeq (NFData (..), force)
+import Control.Exception (SomeException, evaluate, try)
 import Data.Aeson (Value)
 import Data.Bifunctor (first)
 
@@ -88,26 +93,44 @@ import JsonLogic.Core.Eval (Program, compileRule, runProgram)
 import JsonLogic.Core.Location (Location, Segment (..), fromSegments, locationSegments, renderLocation)
 import JsonLogic.Core.Operator (OperatorName (..))
 import JsonLogic.Core.Parse (parseRuleWith)
-import qualified JsonLogic.Core.Rule as Core
 
 -- | A rule that has been read, checked and compiled, ready to run against
 -- any number of inputs. It keeps the 'Config' and the custom operators it was
--- compiled with.
-data Rule = Rule Core.Rule Program
+-- compiled with, and nothing of the JSON it was read from.
+data Rule = Rule !DataUse !Program
+
+-- | A 'Rule' is compiled completely when it is built, so there is nothing
+-- left to evaluate.
+instance NFData Rule where
+  rnf (Rule use program) = rnf use `seq` program `seq` ()
 
 -- | Read a rule and compile it. Fails with a 'ParseFailure' if the rule
--- nests too deeply or, in 'Strict' mode, gives an operator the wrong number of
--- arguments. Custom operators are resolved here, once; an operator the
--- registry does not have is reported as 'UnknownOperator' only if a run
--- reaches it, because the reference evaluates rules lazily.
+-- has too many nodes, nests too deeply or, in 'Strict' mode, gives an
+-- operator the wrong number of arguments. Custom operators are resolved
+-- here, once; an operator the registry does not have is reported as
+-- 'UnknownOperator' only if a run reaches it, because the reference
+-- evaluates rules lazily.
+--
+-- All of the work is done when the 'Right' is demanded, not on the first
+-- 'run'.
 compile :: Config -> Operators -> Value -> Either Error Rule
 compile config operators value = do
   tree <- first (uncurry ParseFailure) (parseRuleWith config value)
-  pure (Rule tree (compileRule config operators tree))
+  let !use = force (Analysis.dataUse tree)
+      !program = compileRule config operators tree
+  pure (Rule use program)
 
 -- | Run a compiled rule against some data.
 run :: Rule -> Value -> Either Error Value
 run (Rule _ program) input = first (uncurry EvalFailure) (runProgram program input)
+
+-- | 'run', for callers who cannot let an exception escape: a custom
+-- operator is ordinary Haskell and may throw (or loop), and 'run' being pure
+-- does not stop it. The result is forced inside the 'try', so an exception
+-- raised while a lazy part of it is evaluated is caught too. Wrap it in
+-- 'System.Timeout.timeout' to bound wall-clock time as well.
+tryRun :: Rule -> Value -> IO (Either SomeException (Either Error Value))
+tryRun rule input = try (evaluate (force (run rule input)))
 
 -- | What a compiled rule can read from its data, found without running it:
 -- if 'usesAllData' is false, its result depends on the data only through
@@ -117,7 +140,7 @@ run (Rule _ program) input = first (uncurry EvalFailure) (runProgram program inp
 --
 -- > dataUse <$> compile defaultConfig noOperators rule
 dataUse :: Rule -> DataUse
-dataUse (Rule tree _) = Analysis.dataUse tree
+dataUse (Rule use _) = use
 
 -- | Apply a rule to some data, with the builtin operators only and the
 -- default 'Config'.

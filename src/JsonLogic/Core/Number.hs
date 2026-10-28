@@ -24,8 +24,7 @@ module JsonLogic.Core.Number
     -- * Writing
   , numberToString
   , doubleToScientific
-  , shortestDigits
-  , shortestDigitsExact
+  , shortestDecimal
 
     -- * Arithmetic
   , remainderJs
@@ -37,13 +36,12 @@ import Data.Bifunctor (first)
 import Data.Bits (shiftL, shiftR, (.&.))
 import Data.Char (digitToInt, isDigit, isHexDigit)
 import Data.Int (Int64)
-import Data.List (dropWhileEnd, sortOn, stripPrefix)
+import Data.List (dropWhileEnd, stripPrefix)
 import qualified Data.List as List
-import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import Data.Scientific (Scientific, base10Exponent, coefficient, scientific)
 import Data.Text (Text)
 import qualified Data.Text as Text
-import Numeric (floatToDigits)
+import GHC.Num.Integer (integerLog2)
 
 import JsonLogic.Core.Ryu (shortestDecimalRyu)
 
@@ -94,7 +92,9 @@ decimalToDouble mantissa exponent10
   | exponent10 >= 0 = roundRatio (mantissa * 10 ^ exponent10) 1
   | otherwise = roundRatio mantissa (10 ^ negate exponent10)
   where
-    magnitude = exponent10 + toInteger (length (show mantissa))
+    -- the digit count, to within one: enough to decide overflow and
+    -- underflow, whose thresholds have far more room than that
+    magnitude = exponent10 + decimalDigits mantissa
 
 -- | @numerator / denominator@, both positive, as the nearest double, ties to
 -- even, including the subnormal range and overflow to infinity.
@@ -123,14 +123,19 @@ roundRatio numerator denominator
     roundsUp = below > half || (below == half && (remainder /= 0 || odd kept))
     rounded = if roundsUp then kept + 1 else kept
 
--- | The number of bits in a positive integer.
+-- | The number of bits in a positive integer, in constant time for a
+-- machine-sized one and linear in its size otherwise. (Peeling 64 bits at a
+-- time copies the whole integer on every step, which is quadratic: a
+-- million-digit number took seconds.)
 bitLength :: Integer -> Int
-bitLength = go 0
-  where
-    go acc v
-      | v >= 18446744073709551616 = go (acc + 64) (v `shiftR` 64)
-      | v == 0 = acc
-      | otherwise = go (acc + 1) (v `shiftR` 1)
+bitLength v
+  | v <= 0 = 0
+  | otherwise = fromIntegral (integerLog2 v) + 1
+
+-- | The number of decimal digits of a positive integer, or one fewer or
+-- more, from its bit length (log10 2 is 0.30103).
+decimalDigits :: Integer -> Integer
+decimalDigits v = (toInteger (bitLength v) * 30103) `quot` 100000 + 1
 
 -- | ECMAScript's @WhiteSpace@ and @LineTerminator@ code points, which is what
 -- string-to-number conversion trims. Listed explicitly rather than taken from
@@ -330,15 +335,6 @@ wholeNumber d
   where
     whole = truncate d
 
--- | The digits ECMAScript prints for a positive finite double, as
--- @(digits, pointPosition)@ in the convention of 'floatToDigits': the value
--- is @0.d1d2...dn * 10^pointPosition@.
-shortestDigits :: Double -> ([Int], Int)
-shortestDigits d = (map digitToInt digits, length digits + exponent10)
-  where
-    (coefficientDigits, exponent10) = shortestDecimal d
-    digits = show coefficientDigits
-
 -- | The decimal ECMAScript prints for a positive finite double, as
 -- @(significand, exponent)@ with the value @significand * 10^exponent@ and no
 -- trailing zeros in the significand.
@@ -356,43 +352,6 @@ shortestDecimal d = case wholeNumber d of
     stripZeros m e
       | m /= 0 && m `rem` 10 == 0 = stripZeros (m `quot` 10) (e + 1)
       | otherwise = (m, e)
-
--- | 'shortestDigits' computed exactly, for every positive finite double.
---
--- GHC's 'floatToDigits' only accepts digit strings strictly inside the
--- rounding interval of the double. ECMAScript also accepts the exact
--- halfway point when the double's significand is even, because
--- round-half-even reads it back to the same double. For doubles of 2^53 and
--- above those points are whole numbers, so a shorter string can exist where
--- GHC needs one more digit: @2.2531e21@, not @2.2531000000000001e21@. Below
--- 2^53 the halfway points have too many digits to matter, so GHC's answer
--- stands, except that when two candidates of the shortest length are equally
--- close (@9007199254740993 / 10@ is halfway between @...099.2@ and @...099.3@)
--- ECMAScript takes the even one, and 'floatToDigits' does not.
-shortestDigitsExact :: Double -> ([Int], Int)
-shortestDigitsExact d
-  | d < twoTo53 =
-      -- A tie between two equally short candidates needs 16 or more digits:
-      -- below that, decimal spacing is wider than the spacing of doubles.
-      if length digits >= 16 then fromMaybe generated (shorter (length digits)) else generated
-  | otherwise = fromMaybe generated (listToMaybe (mapMaybe shorter [1 .. length digits]))
-  where
-    generated@(digits, pointPosition) = floatToDigits 10 d
-    exact = toRational d
-    shorter k =
-      case sortOn rank (filter readsBack [lower, upper]) of
-        best : _ -> Just (digitsOf best k)
-        [] -> Nothing
-      where
-        scale = 10 ^^ (pointPosition - k) :: Rational
-        scaled = exact / scale
-        lower = floor scaled :: Integer
-        upper = ceiling scaled :: Integer
-        readsBack m = fromRational (fromInteger m * scale) == d
-        rank m = (abs (fromInteger m * scale - exact), odd m)
-    digitsOf m k = (map digitToInt (dropWhileEnd (== '0') text), pointPosition + length text - k)
-      where
-        text = show m
 
 -- | @layoutDigits ds k n@: @k@ significant digits @ds@ whose decimal
 -- point sits @n@ places to the right of their start, laid out as

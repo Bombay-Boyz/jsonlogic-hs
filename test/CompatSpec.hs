@@ -16,6 +16,7 @@ import Gen (genText)
 import JsonLogic
 import JsonLogic.Core.Location (root)
 import JsonLogic.Core.Utf16
+import Oracle (fromUtf16Units, utf16Units)
 import Support (Problem (..), at, json, problem)
 
 -- | A registry that the test expects to be accepted.
