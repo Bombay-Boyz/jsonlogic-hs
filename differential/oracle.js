@@ -30,8 +30,49 @@ if (version !== REQUIRED) {
 console.error("oracle: json-logic-js " + version + ", node " + process.version);
 
 // Lone surrogates cannot be held in a Haskell Text (nor decoded by aeson), so
-// the reference's answer is normalised the way String.prototype.toWellFormed
-// would: each becomes U+FFFD. This is the one documented string deviation.
+// a severed half of a surrogate pair is U+FFFD, as String.prototype.toWellFormed
+// makes it. This is the one documented string deviation, and it has to hold
+// at the point the half is produced, not only in the final answer: a half
+// that is then compared, measured or searched behaves as U+FFFD, not as the
+// lone surrogate (as a string, "\uD83D" sorts below "\uD83D\uDE00", but U+FFFD
+// sorts above it). Strings are cut in two places, indexing by `var` and
+// `substr`, so those two operations are replaced by the reference's own code
+// with the cut made well-formed; everything else is the reference untouched.
+function sever(x) {
+  return typeof x === "string" && typeof x.toWellFormed === "function" ? x.toWellFormed() : x;
+}
+
+// json-logic-js 2.0.5, "var", with the result well-formed.
+jsonLogic.add_operation("var", function (a, b) {
+  "use strict"; // as the reference is: `this` stays a primitive, not a boxed one
+  const notFound = b === undefined ? null : b;
+  let data = this;
+  if (typeof a === "undefined" || a === "" || a === null) {
+    return sever(data);
+  }
+  const subProps = String(a).split(".");
+  for (let i = 0; i < subProps.length; i++) {
+    if (data === null || data === undefined) {
+      return notFound;
+    }
+    data = data[subProps[i]];
+    if (data === undefined) {
+      return notFound;
+    }
+  }
+  return sever(data);
+});
+
+// json-logic-js 2.0.5, "substr", with the result well-formed.
+jsonLogic.add_operation("substr", function (source, start, end) {
+  "use strict";
+  if (end < 0) {
+    const temp = String(source).substr(start);
+    return sever(temp.substr(0, temp.length + end));
+  }
+  return sever(String(source).substr(start, end));
+});
+
 function wellFormed(x) {
   if (typeof x === "string") return typeof x.toWellFormed === "function" ? x.toWellFormed() : x;
   if (Array.isArray(x)) return x.map(wellFormed);
