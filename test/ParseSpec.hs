@@ -17,7 +17,8 @@ import JsonLogic.Core.Errors (Arity (..), ParseError (..))
 import JsonLogic.Core.Location (Location, root)
 import JsonLogic.Core.Operator (OperatorName (..), allBuiltins, builtinName, lookupBuiltin)
 import JsonLogic.Core.Parse (parseRuleWith)
-import JsonLogic.Core.Rule (Node (..), Rule, RuleF (..))
+import JsonLogic.Core.Operator (Builtin (..))
+import JsonLogic.Core.Rule (Node (..), RuleF (..), RuleTree)
 import Oracle (Term, parseRule, stripLocations)
 import Support (at, json)
 
@@ -39,13 +40,13 @@ lenientShape :: Value -> Either ParseError Term
 lenientShape = either (Left . snd) (Right . stripLocations) . parseRuleWith defaultConfig{arityMode = Lenient}
 
 -- | The location of every node, outermost first.
-locations :: Rule -> [Location]
+locations :: RuleTree -> [Location]
 locations = foldFix (\(Node location node) -> location : concat node)
 
 parsedLocations :: Value -> [Location]
 parsedLocations = either (const []) locations . parseRule
 
-withDepth :: Int -> Value -> Either (Location, ParseError) Rule
+withDepth :: Int -> Value -> Either (Location, ParseError) RuleTree
 withDepth limit = parseRuleWith defaultConfig{maxDepth = limit}
 
 spec :: Spec
@@ -97,7 +98,7 @@ spec = describe "parsing" $ do
         `shouldBe` Right (Fix (Reduce (lit (String "xs")) (lit (int 2)) (lit Null)))
     it "keeps surplus operands of an ordinary operator to be evaluated" $
       lenientShape (object ["!" .= [int 1, int 2]])
-        `shouldBe` Right (Fix (Discard (Fix (Not (lit (int 1)))) [lit (int 2)]))
+        `shouldBe` Right (Fix (Applied BNot [lit (int 1)] [lit (int 2)]))
     it "drops surplus operands of map, which the reference never looks at" $
       lenientShape (object ["map" .= [int 1, int 2, int 3]])
         `shouldBe` Right (Fix (Map (lit (int 1)) (lit (int 2))))

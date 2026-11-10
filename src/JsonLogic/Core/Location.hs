@@ -25,6 +25,7 @@ module JsonLogic.Core.Location
   ) where
 
 import Control.DeepSeq (NFData (..))
+import Data.Ord (comparing)
 import Data.Text (Text)
 import qualified Data.Text as Text
 
@@ -43,7 +44,14 @@ instance NFData Segment where
 -- | A path from the root of a rule. Held innermost-first, so that stepping
 -- into a child while reading a rule is constant time.
 newtype Location = Location [Segment]
-  deriving (Eq, Ord)
+  deriving (Eq)
+
+-- | Locations are ordered by their position in the rule's text: segment by
+-- segment from the root, so a parent sorts before its children and siblings
+-- sort by key (or index). The stored list is innermost-first, so the order
+-- is taken from 'locationSegments', never from the representation.
+instance Ord Location where
+  compare = comparing locationSegments
 
 instance NFData Location where
   rnf (Location segments) = rnf segments

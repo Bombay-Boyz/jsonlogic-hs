@@ -3,6 +3,7 @@ module Main (main) where
 import Test.Hspec (hspec)
 
 import qualified AnalysisSpec
+import qualified AuditSpec
 import qualified CompatSpec
 import qualified EvalSpec
 import qualified LimitsSpec
@@ -23,3 +24,4 @@ main = hspec $ do
   LocationSpec.spec
   AnalysisSpec.spec
   RegressionSpec.spec
+  AuditSpec.spec

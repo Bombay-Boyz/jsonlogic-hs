@@ -4,6 +4,56 @@
 
 First release.
 
+### Changes from a forensic engineering audit
+
+Each item is pinned by a test in `test/AuditSpec.hs`.
+
+* **`tryRun` no longer swallows asynchronous exceptions** (a `timeout`,
+  `killThread`, a stack or heap overflow). It returns `Either RunFailure
+  Value`; `runWithTimeout` is new. Before, `timeout n (tryRun r d)` returned
+  `Just (Left <<timeout>>)` and a killed thread carried on.
+* **Unknown operators are refused when a rule is compiled** (strict mode, the
+  default), naming the nearest known operators. `unknownOperators =
+  FailWhenReached` (or `Lenient`) keeps the reference's laziness;
+  `unresolvedOperators` lists them. The declared `Arity` of a custom operator
+  is checked at compile time in strict mode. This moves the strict community
+  score from 839 to 829: the ten cases are rules whose unknown operator is
+  never reached.
+* **`validate`** reports every problem in a rule in document order;
+  **`checkData`** screens untrusted data (depth, and lossy numbers).
+* **Errors** are specific and machine-readable: `InvalidOperand` names the
+  operand, what it needed and what it got; `Error` has a `ToJSON` instance
+  with stable `kind` tags and a `displayException` that reads as a sentence;
+  `CustomError` carries a code, a message and details.
+* **Numbers a double cannot hold** (`9007199254740993`): `numericSafety =
+  PreserveSource` keeps their digits when passed through unchanged;
+  `RejectLossy` refuses them. The default is unchanged (the reference rounds).
+* **A severed surrogate pair keeps its identity**: the halves of `"😀"` compare
+  unequal, order by code unit, and `cat` joins them back, as in JavaScript.
+  Before, both became U+FFFD, so they compared equal.
+* **One limit model**: `maxIterations` applies to all six iterating operators
+  and is separate from `maxArrayLength` (what is built); limits are validated
+  (`validateConfig`, `unlimited`); `maxNodes`, `maxDataDepth` are new. A
+  filter over a large dataset that keeps few elements no longer needs
+  `maxArrayLength` raised.
+* **Custom operators can be lazy** (`lazyOperator`, `force`, `stepFail`), so a
+  `coalesce` can short-circuit. They remain pure by design.
+* **Lenient mode evaluates surplus operands before applying the operator**,
+  as the reference does, so the reference's error is the one reported.
+* `Ord Location` follows position in the rule, not the internal
+  representation. `apply` no longer runs the data-use analysis it does not
+  need. `compile`/`apply` agree on every rule, including refused ones.
+* `applyBytes` (JSON text in and out), and a `jsonlogic` command
+  (`eval`, `check`, `uses`).
+* **API surface**: only `JsonLogic` is exposed (the rest is a private internal
+  library); `Config`'s constructor is hidden (use record update on
+  `defaultConfig`); `JsonLogic.Core.Rule.Rule` is now `RuleTree`; the
+  `Semigroup`/`Monoid` instances of `Operators` are gone (they shadowed
+  silently).
+* The differential tester now runs the reference unpatched and generates
+  surrogate-half and surplus-operand cases; the original code fails 91 of
+  12,000 of them, this version none.
+
 ### Reading and evaluating rules
 
 * Every builtin operator of the classic JsonLogic specification, with
@@ -23,9 +73,10 @@ First release.
 * Every error carries the `Location` of the node that failed, a JSON Pointer
   (RFC 6901): `ParseFailure Location ParseError` and
   `EvalFailure Location EvalError`; `renderError` starts with it.
-* Custom operators: `operatorsFromList` refuses a builtin name or a name given
-  twice, `Operators` combine with `<>`, and an operator's result is held to
-  the depth and step limits.
+* Custom operators: `operatorsFromList` refuses a builtin name, an empty or
+  padded name, or a name given twice; registries combine with
+  `combineOperators`, which refuses a name both define; and an operator's
+  result is held to the depth and step limits.
 * `dataUse`: which paths of the data a rule can read, found without running
   it, scope-aware (an iteration body reads the element, not the data), with a
   tested guarantee.

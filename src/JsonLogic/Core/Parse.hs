@@ -19,10 +19,13 @@
 -- here, exactly as the reference behaves: missing operands become
 -- @undefined@ (@null@ for the initial value of @reduce@), and surplus ones are
 -- dropped, after being evaluated for their failures where the reference
--- evaluates them ('Discard'). How each builtin treats its operands is stated
+-- evaluates them ('Applied'). How each builtin treats its operands is stated
 -- once, in @shapeOf@.
 module JsonLogic.Core.Parse
   ( parseRuleWith
+  , parseRuleChecked
+  , parseProblems
+  , buildBuiltin
   ) where
 
 import Data.Aeson (Value (..))
@@ -32,7 +35,9 @@ import Data.Fix (unfoldFixM)
 import Data.Foldable (toList)
 import Data.Text (Text)
 
-import JsonLogic.Core.Config (ArityMode (..), Config (..))
+import JsonLogic.Core.Check (customProblem)
+import JsonLogic.Core.Custom (Operators)
+import JsonLogic.Core.Config (ArityMode (..), Config (..), NumericSafety (..), validateConfig)
 import JsonLogic.Core.Errors (Arity (..), ParseError (..))
 import JsonLogic.Core.Location (Location, Segment (..), child, root)
 import JsonLogic.Core.Operator
@@ -41,16 +46,44 @@ import JsonLogic.Core.Operator
   , builtinOperatorName
   , lookupBuiltin
   )
-import JsonLogic.Core.Rule (Node (..), Rule, RuleF (..))
-import JsonLogic.Core.Value (jsonWeightUpTo, nestsDeeperThan, saturatingSucc)
+import JsonLogic.Core.Number (printsAsSource)
+import JsonLogic.Core.Rule (Node (..), RuleF (..), RuleTree)
+import JsonLogic.Core.Value (firstLossyNumber, jsonWeightUpTo, nestsDeeperThan, saturatingSucc)
 
 -- | Read a rule with the configured depth limit, node limit and arity mode.
 -- A failure says where in the rule it happened. A rule with too many nodes
 -- is refused before any of it is read.
-parseRuleWith :: Config -> Value -> Either (Location, ParseError) Rule
-parseRuleWith config value
-  | jsonWeightUpTo (saturatingSucc limit) value > limit = Left (root, NodeLimitExceeded limit)
-  | otherwise = unfoldFixM (step config) (Seed 0 root (Json value))
+parseRuleWith :: Config -> Value -> Either (Location, ParseError) RuleTree
+parseRuleWith config = parseRuleChecked config Nothing
+
+-- | 'parseRuleWith', and, given the registry of custom operators, also
+-- refusing a call to an operator that is not registered (when the
+-- configuration rejects those) or that is given the wrong number of
+-- operands (in strict arity mode). The first problem in document order is
+-- the one reported.
+parseRuleChecked :: Config -> Maybe Operators -> Value -> Either (Location, ParseError) RuleTree
+parseRuleChecked config operators value = case preliminary config value of
+  Just problem -> Left problem
+  Nothing -> unfoldFixM (step config operators) (Seed 0 root (Json value))
+
+-- | Every problem 'parseRuleChecked' would find, not only the first, in
+-- document order. A node that cannot be read is reported once and its
+-- insides are not looked at; the rest of the rule still is.
+parseProblems :: Config -> Maybe Operators -> Value -> [(Location, ParseError)]
+parseProblems config operators value = case preliminary config value of
+  Just problem -> [problem]
+  Nothing -> go (Seed 0 root (Json value))
+  where
+    go seed = case step config operators seed of
+      Left problem -> [problem]
+      Right (Node _ node) -> concatMap go (toList node)
+
+-- | The checks made before any of the rule is read.
+preliminary :: Config -> Value -> Maybe (Location, ParseError)
+preliminary config value
+  | Left problem <- validateConfig config = Just (root, InvalidConfig problem)
+  | jsonWeightUpTo (saturatingSucc limit) value > limit = Just (root, NodeLimitExceeded limit)
+  | otherwise = Nothing
   where
     limit = maxNodes config
 
@@ -64,16 +97,14 @@ data Source
   | -- | An operand the rule leaves out, which the reference reads as
     -- @undefined@ or, in two places, @null@.
     Absent Absence
-  | -- | An operator call whose operand count has already been repaired.
-    Repaired Builtin [Seed]
 
 data Absence = AbsentUndefined | AbsentNull
 
 -- | One layer of the unfold.
-step :: Config -> Seed -> Either (Location, ParseError) (Node Seed)
-step config (Seed depth location source)
+step :: Config -> Maybe Operators -> Seed -> Either (Location, ParseError) (Node Seed)
+step config operators (Seed depth location source)
   | depth > limit = Left (location, DepthExceeded limit)
-  | otherwise = Node location <$> layer
+  | otherwise = Node location <$> (layer >>= checked)
   where
     limit = maxDepth config
     layer = case source of
@@ -86,12 +117,21 @@ step config (Seed depth location source)
       -- @{"and": []}@ is how the reference's @undefined@ is written as a rule
       Absent AbsentUndefined -> Right (And [])
       Absent AbsentNull -> Right (Lit Null)
-      Repaired builtin operands -> build location builtin operands
+    checked node = case (node, operators) of
+      (CustomOp name seeds, Just registry)
+        | Just problem <- customProblem config registry name (length seeds) -> Left (location, problem)
+      _ -> Right node
     -- A literal's own nesting counts towards the limit, so a deeply nested
     -- object cannot be smuggled past it inside a rule.
     literal value
       | nestsDeeperThan (limit - depth) value = Left (location, DepthExceeded limit)
+      | numericSafety config == RejectLossy
+      , Just n <- lossy value =
+          Left (location, LossyNumberLiteral n)
       | otherwise = Right (Lit value)
+    lossy value = case value of
+      Number n | not (printsAsSource n) -> Just n
+      _ -> firstLossyNumber value
 
 -- | An operator call: a builtin, read to its shape, or a custom operator.
 operator :: Config -> Int -> Location -> Text -> Value -> Either (Location, ParseError) (RuleF Seed)
@@ -118,7 +158,7 @@ lenient depth location builtin seeds = case maximumOf (shapeArity shape) of
   Just most
     | length full > most -> case shapeSurplus shape of
         NeverEvaluated -> build location builtin (take most full)
-        Evaluated -> Right (Discard (Seed depth location (Repaired builtin (take most full))) (drop most full))
+        Evaluated -> Right (Applied builtin (take most full) (drop most full))
   _ -> build location builtin full
   where
     shape = shapeOf builtin :: Shape Seed
@@ -142,6 +182,12 @@ absence :: Builtin -> Int -> Absence
 absence BVar 0 = AbsentNull
 absence BReduce 2 = AbsentNull
 absence _ _ = AbsentUndefined
+
+-- | The node for a builtin applied to operands, if the count is one its
+-- constructor can hold. Used to rebuild an operator over operands that are
+-- already evaluated.
+buildBuiltin :: Builtin -> [a] -> Maybe (RuleF a)
+buildBuiltin builtin = shapeBuild (shapeOf builtin)
 
 -- | Build a call whose operand count the shape admits.
 build :: Location -> Builtin -> [Seed] -> Either (Location, ParseError) (RuleF Seed)

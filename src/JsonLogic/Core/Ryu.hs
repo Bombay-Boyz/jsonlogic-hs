@@ -26,6 +26,7 @@ import Data.Bits (shiftL, shiftR, (.&.), (.|.))
 import qualified Data.Vector.Unboxed as Unboxed
 import Data.Word (Word64)
 import GHC.Float (castDoubleToWord64)
+import GHC.Num.Integer (integerLog2)
 
 -- | For a positive, finite, non-zero double, @(digits, exponent)@ with the
 -- double's shortest decimal equal to @digits * 10^exponent@. The digits may
@@ -297,9 +298,8 @@ lowWord = fromInteger . (.&. 0xFFFFFFFFFFFFFFFF)
 highWord :: Integer -> Word64
 highWord = fromInteger . (`shiftR` 64)
 
+-- | The number of bits in a positive integer.
 bitLength :: Integer -> Int
-bitLength = go 0
-  where
-    go n v
-      | v == 0 = n
-      | otherwise = go (n + 1) (v `shiftR` 1)
+bitLength v
+  | v <= 0 = 0
+  | otherwise = fromIntegral (integerLog2 v) + 1

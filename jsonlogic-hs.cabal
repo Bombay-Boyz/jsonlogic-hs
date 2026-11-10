@@ -26,9 +26,9 @@ description:
   supplied by the caller, and dataUse reports which parts of the data a rule
   can read.
 
-  The supported API is the "JsonLogic" module; docs/TUTORIAL.md walks through
-  it. The "JsonLogic.Core" modules are exposed for advanced use and may
-  change before 1.0.
+  The supported API is the "JsonLogic" module, and nothing else is exposed;
+  docs/TUTORIAL.md walks through it. The package also installs a small
+  command, jsonlogic, to evaluate, check and inspect rules.
 category:           Data, JSON
 license:            MIT
 license-file:       LICENSE
@@ -104,13 +104,24 @@ common warnings
   if flag(werror)
     ghc-options:    -Werror
 
--- The supported API is the JsonLogic module. JsonLogic.Core.* is exposed for
--- advanced use and for the test suites, and may change before 1.0.
-library
-  import:           warnings
+-- Shared dependency bounds: one place to change them, so no component can
+-- drift from the others.
+common deps
+  build-depends:    base                 >=4.18 && <4.23
+                  , aeson                >=2.1 && <2.4
+                  , bytestring           >=0.11 && <0.13
+                  , text                 >=2.0 && <2.3
+
+-- Everything except the public module lives in a private internal library,
+-- which only this package's own components (the tests) can import. What it
+-- exports is therefore not part of the package's API, and can change in any
+-- release without a version bump (docs/STABILITY.md).
+library internal
+  import:           warnings, deps
+  visibility:       private
   hs-source-dirs:   src
-  exposed-modules:  JsonLogic
-                    JsonLogic.Core.Analysis
+  exposed-modules:  JsonLogic.Core.Analysis
+                    JsonLogic.Core.Check
                     JsonLogic.Core.Config
                     JsonLogic.Core.Custom
                     JsonLogic.Core.Errors
@@ -120,25 +131,39 @@ library
                     JsonLogic.Core.Operator
                     JsonLogic.Core.Parse
                     JsonLogic.Core.Rule
+                    JsonLogic.Core.Run
                     JsonLogic.Core.Ryu
                     JsonLogic.Core.Utf16
                     JsonLogic.Core.Value
-  build-depends:    base                 >=4.18 && <4.23
-                  , aeson                >=2.1 && <2.4
-                  , containers           >=0.6 && <0.9
+  build-depends:    containers           >=0.6 && <0.9
                   , data-fix             >=0.3 && <0.4
                   , deepseq              >=1.4 && <1.7
                   , ghc-bignum           >=1.3 && <2
                   , scientific           >=0.3 && <0.4
-                  , text                 >=2.0 && <2.3
                   , vector               >=0.12.3 && <0.14
 
+-- The supported API: the JsonLogic module, and nothing else.
+library
+  import:           warnings, deps
+  hs-source-dirs:   api
+  exposed-modules:  JsonLogic
+  build-depends:    deepseq              >=1.4 && <1.7
+                  , jsonlogic-hs:internal
+
+-- The command-line tool: try, check and inspect rules without writing Haskell.
+executable jsonlogic
+  import:           warnings, deps
+  hs-source-dirs:   app
+  main-is:          Main.hs
+  build-depends:    jsonlogic-hs
+
 test-suite jsonlogic-hs-test
-  import:           warnings
+  import:           warnings, deps
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Spec.hs
   other-modules:    AnalysisSpec
+                    AuditSpec
                     CompatSpec
                     EvalSpec
                     Gen
@@ -152,30 +177,24 @@ test-suite jsonlogic-hs-test
                     ValueSpec
   -- a runaway allocation fails the test instead of swapping the machine
   ghc-options:      -rtsopts "-with-rtsopts=-M2g"
-  build-depends:    base                 >=4.18 && <4.23
-                  , aeson                >=2.1 && <2.4
-                  , bytestring           >=0.11 && <0.13
-                  , data-fix             >=0.3 && <0.4
+  build-depends:    data-fix             >=0.3 && <0.4
                   , deepseq              >=1.4 && <1.7
                   , hspec                >=2.10 && <2.12
                   , QuickCheck           >=2.14 && <2.20
                   , scientific           >=0.3 && <0.4
-                  , text                 >=2.0 && <2.3
                   , vector               >=0.12.3 && <0.14
                   , jsonlogic-hs
+                  , jsonlogic-hs:internal
 
 -- Runs the classic JsonLogic suite (test/tests.json) and fails if any case
 -- does not pass. Run it with:
 --   cabal test jsonlogic-hs-conformance --test-show-details=direct
 test-suite jsonlogic-hs-conformance
-  import:           warnings
+  import:           warnings, deps
   type:             exitcode-stdio-1.0
   hs-source-dirs:   conformance
   main-is:          Conformance.hs
-  build-depends:    base                 >=4.18 && <4.23
-                  , aeson                >=2.1 && <2.4
-                  , bytestring           >=0.11 && <0.13
-                  , directory            >=1.3 && <1.4
+  build-depends:    directory            >=1.3 && <1.4
                   , jsonlogic-hs
 
 -- Replays the committed outlier fixture (test/outliers.jsonl), the
@@ -183,44 +202,33 @@ test-suite jsonlogic-hs-conformance
 -- Needs neither Node nor a network. Pass a path to replay another tier:
 --   cabal run jsonlogic-hs-outliers -- /path/to/full.jsonl
 test-suite jsonlogic-hs-outliers
-  import:           warnings
+  import:           warnings, deps
   type:             exitcode-stdio-1.0
   hs-source-dirs:   outliers
   main-is:          Outliers.hs
-  build-depends:    base                 >=4.18 && <4.23
-                  , aeson                >=2.1 && <2.4
-                  , bytestring           >=0.11 && <0.13
-                  , containers           >=0.6 && <0.9
+  build-depends:    containers           >=0.6 && <0.9
                   , directory            >=1.3 && <1.4
                   , scientific           >=0.3 && <0.4
-                  , text                 >=2.0 && <2.3
                   , jsonlogic-hs
+                  , jsonlogic-hs:internal
 
 -- Every example in docs/TUTORIAL.md, checked against the library.
 test-suite jsonlogic-hs-tutorial
-  import:           warnings
+  import:           warnings, deps
   type:             exitcode-stdio-1.0
   hs-source-dirs:   tutorial
   main-is:          Tutorial.hs
-  build-depends:    base                 >=4.18 && <4.23
-                  , aeson                >=2.1 && <2.4
-                  , bytestring           >=0.11 && <0.13
-                  , text                 >=2.0 && <2.3
-                  , jsonlogic-hs
+  build-depends:    jsonlogic-hs
 
 -- Scores the library on the community suite (test/community, from
 -- json-logic/compat-tables) and fails if the score differs from
 -- test/community/expected.json. See test/community/README.md.
 test-suite jsonlogic-hs-community
-  import:           warnings
+  import:           warnings, deps
   type:             exitcode-stdio-1.0
   hs-source-dirs:   community
   main-is:          Community.hs
-  build-depends:    base                 >=4.18 && <4.23
-                  , aeson                >=2.1 && <2.4
-                  , bytestring           >=0.11 && <0.13
-                  , directory            >=1.3 && <1.4
-                  , text                 >=2.0 && <2.3
+  build-depends:    directory            >=1.3 && <1.4
                   , vector               >=0.12.3 && <0.14
                   , jsonlogic-hs
 
@@ -228,36 +236,28 @@ test-suite jsonlogic-hs-community
 -- Node.js, so it is a flag-gated executable and not part of `cabal test`.
 -- See differential/README.md.
 executable jsonlogic-hs-differential
-  import:           warnings
+  import:           warnings, deps
   if !flag(differential)
     buildable:      False
   hs-source-dirs:   differential
   main-is:          Differential.hs
-  build-depends:    base                 >=4.18 && <4.23
-                  , aeson                >=2.1 && <2.4
-                  , bytestring           >=0.11 && <0.13
-                  , directory            >=1.3 && <1.4
+  build-depends:    directory            >=1.3 && <1.4
                   , process              >=1.6 && <1.7
                   , QuickCheck           >=2.14 && <2.20
                   , scientific           >=0.3 && <0.4
-                  , text                 >=2.0 && <2.3
                   , jsonlogic-hs
 
 -- Benchmarks. See docs/LIMITS.md and bench/Bench.hs.
 executable jsonlogic-hs-bench
-  import:           warnings
+  import:           warnings, deps
   if !flag(bench)
     buildable:      False
   hs-source-dirs:   bench
   main-is:          Bench.hs
   -- -T makes the RTS keep allocation statistics, which tasty-bench reports
   ghc-options:      -rtsopts "-with-rtsopts=-T"
-  build-depends:    base                 >=4.18 && <4.23
-                  , aeson                >=2.1 && <2.4
-                  , bytestring           >=0.11 && <0.13
-                  , scientific           >=0.3 && <0.4
+  build-depends:    scientific           >=0.3 && <0.4
                   , tasty-bench          >=0.3 && <0.5
-                  , text                 >=2.0 && <2.3
                   , jsonlogic-hs
 
 source-repository head

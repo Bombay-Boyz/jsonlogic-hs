@@ -16,20 +16,37 @@
 -- operation is its scan of the string and nothing more.
 --
 -- A 'Text' cannot hold a lone surrogate, so a slice that cuts through a
--- surrogate pair yields U+FFFD for the severed half. That is the
--- single accepted deviation from the reference here, and it is exactly what
--- @String.prototype.toWellFormed()@ would make of the reference's answer.
+-- surrogate pair cannot be a 'Text'. 'utf16Slice' and 'utf16CharAt' answer
+-- such a slice with U+FFFD for the severed half (what
+-- @String.prototype.toWellFormed()@ makes of the reference's answer). The
+-- evaluator does not use them for that: it uses 'utf16SliceExact', which
+-- answers a 'Units' value when the slice is not well formed, so that the
+-- halves keep their identity: they compare unequal, and joining them again
+-- gives the original character, as in JavaScript.
 module JsonLogic.Core.Utf16
   ( utf16Length
   , utf16Slice
   , utf16CharAt
   , compareUtf16
+
+    -- * Strings that 'Text' cannot hold
+  , Units
+  , toUnits
+  , fromUnits
+  , unitsText
+  , unitsLength
+  , unitsSlice
+  , unitsAppend
+  , unitsIsInfixOf
+  , utf16SliceExact
+  , utf16CharAtExact
   ) where
 
-import Data.Bits (shiftR, (.&.), (.|.))
+import Data.Bits (shiftL, shiftR, (.&.), (.|.))
 import Data.Char (ord)
 import Data.Text (Text)
 import qualified Data.Text as Text
+import qualified Data.Vector.Unboxed as Unboxed
 import Data.Word (Word16)
 
 -- | The number of UTF-16 code units: JavaScript's @s.length@.
@@ -135,3 +152,103 @@ compareUtf16 a b = case Text.commonPrefixes a b of
       (Just (p, _), Just (q, _))
         | p == q -> EQ
         | otherwise -> compare (charUnits p) (charUnits q)
+
+-- ---------------------------------------------------------------------
+-- Strings with lone surrogates
+-- ---------------------------------------------------------------------
+
+-- | A JavaScript string as its UTF-16 code units. Used only for the rare
+-- string that is not well formed (it holds a lone surrogate), which a
+-- 'Text' cannot; every other string stays a 'Text'.
+newtype Units = Units (Unboxed.Vector Word16)
+  deriving (Eq, Ord, Show)
+
+isHigh, isLow :: Word16 -> Bool
+isHigh u = u >= 0xD800 && u <= 0xDBFF
+isLow u = u >= 0xDC00 && u <= 0xDFFF
+
+-- | The code units of a 'Text'.
+toUnits :: Text -> Units
+toUnits = Units . Unboxed.fromList . concatMap charUnits . Text.unpack
+
+-- | The characters of a unit sequence, with each lone surrogate written
+-- U+FFFD, and whether there were none.
+decode :: [Word16] -> ([Char], Bool)
+decode (high : low : rest)
+  | isHigh high && isLow low =
+      let (chars, ok) = decode rest
+          cp = 0x10000 + ((fromIntegral high - 0xD800) `shiftL` 10) + (fromIntegral low - 0xDC00)
+       in (toEnum cp : chars, ok)
+decode (unit : rest)
+  | isHigh unit || isLow unit = let (chars, _) = decode rest in ('\xFFFD' : chars, False)
+  | otherwise = let (chars, ok) = decode rest in (toEnum (fromIntegral unit) : chars, ok)
+decode [] = ([], True)
+
+-- | A 'Text' if the units are well formed, otherwise the units themselves.
+fromUnits :: Units -> Either Units Text
+fromUnits units@(Units v) = case decode (Unboxed.toList v) of
+  (chars, True) -> Right (Text.pack chars)
+  (_, False) -> Left units
+
+-- | The units as text, each lone surrogate written U+FFFD. This is the form
+-- used where a string is read as a number or a path, and in the JSON a rule
+-- returns, where a lone surrogate cannot appear.
+unitsText :: Units -> Text
+unitsText (Units v) = Text.pack (fst (decode (Unboxed.toList v)))
+
+-- | JavaScript's @length@.
+unitsLength :: Units -> Int
+unitsLength (Units v) = Unboxed.length v
+
+-- | @unitsSlice from count@, both already clamped into range.
+unitsSlice :: Int -> Int -> Units -> Units
+unitsSlice from count (Units v) = Units (Unboxed.slice from count v)
+
+-- | Concatenation: halves of a pair that meet become the pair again.
+unitsAppend :: [Units] -> Units
+unitsAppend pieces = Units (Unboxed.concat [v | Units v <- pieces])
+
+-- | @haystack.indexOf(needle) !== -1@, in linear time (Knuth-Morris-Pratt),
+-- so a hostile needle cannot make a search quadratic.
+unitsIsInfixOf :: Units -> Units -> Bool
+unitsIsInfixOf (Units needle) (Units haystack)
+  | m == 0 = True
+  | otherwise = go 0 0
+  where
+    m = Unboxed.length needle
+    n = Unboxed.length haystack
+    failure :: Unboxed.Vector Int
+    failure = Unboxed.constructN m step
+      where
+        step prefix
+          | i == 0 = 0
+          | otherwise = extend (prefix Unboxed.! (i - 1))
+          where
+            i = Unboxed.length prefix
+            extend k
+              | needle Unboxed.! k == needle Unboxed.! i = k + 1
+              | k == 0 = 0
+              | otherwise = extend (prefix Unboxed.! (k - 1))
+    go !i !k
+      | k == m = True
+      | i == n = False
+      | haystack Unboxed.! i == needle Unboxed.! k = go (i + 1) (k + 1)
+      | k == 0 = go (i + 1) 0
+      | otherwise = go i (failure Unboxed.! (k - 1))
+
+-- | 'utf16Slice' that keeps a severed half as itself: 'Right' a 'Text' when
+-- the slice is well formed (the common case, with no allocation per code
+-- unit when the text has no astral character), 'Left' its units when it
+-- cuts a surrogate pair. Both arguments are already clamped into range.
+utf16SliceExact :: Int -> Int -> Text -> Either Units Text
+utf16SliceExact from count text
+  | count <= 0 = Right Text.empty
+  | Text.all isBmp text = Right (Text.take count (Text.drop from text))
+  | otherwise = fromUnits (unitsSlice from count (toUnits text))
+
+-- | The code unit at an index as a one-unit string, or 'Nothing' past the
+-- end. A surrogate half is itself, not U+FFFD.
+utf16CharAtExact :: Int -> Text -> Maybe (Either Units Text)
+utf16CharAtExact i text
+  | i < 0 || i >= utf16Length text = Nothing
+  | otherwise = Just (utf16SliceExact i 1 text)

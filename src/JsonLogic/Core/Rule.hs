@@ -5,7 +5,7 @@
 --
 -- The rule tree: one layer of it ('RuleF', the base functor), and the
 -- recursive tree whose every node records where in the rule's JSON it came
--- from ('Rule').
+-- from ('RuleTree').
 --
 -- Recursion over the tree is never written by hand: the parser builds it
 -- with an unfold ('Data.Fix.unfoldFixM') and the evaluator consumes it with a
@@ -23,7 +23,7 @@
 module JsonLogic.Core.Rule
   ( RuleF (..)
   , Node (..)
-  , Rule
+  , RuleTree
   ) where
 
 import Data.Aeson (Value)
@@ -33,7 +33,7 @@ import Data.Functor (void)
 import Data.Functor.Classes (Eq1 (..), Show1 (..))
 
 import JsonLogic.Core.Location (Location)
-import JsonLogic.Core.Operator (OperatorName)
+import JsonLogic.Core.Operator (Builtin, OperatorName)
 
 -- | One layer of a JsonLogic rule, with its sub-rules at type @a@. Each
 -- constructor's comment states what the reference implementation does, which
@@ -128,12 +128,15 @@ data RuleF a
   | -- | @log@: its operand, unchanged. The reference also prints it; this
     -- library does no I/O.
     Log a
-  | -- | @Discard inner extras@: the value of @inner@, after evaluating each
-    -- of @extras@ for its failures only. Built in lenient arity mode only,
-    -- for the surplus operands of an operator the reference evaluates in
-    -- full before applying it, so that a surplus operand that fails still
-    -- fails the rule, as in the reference.
-    Discard a [a]
+  | -- | @Applied builtin used extras@: a builtin operator that was given
+    -- more operands than it takes, in lenient arity mode. The reference
+    -- evaluates every operand, left to right, and only then applies the
+    -- operator to the first few; so the @used@ operands and then the
+    -- @extras@ are evaluated, and the operator is applied to the values of
+    -- the @used@ ones. Built only for operators that evaluate all their
+    -- operands, so that a surplus operand that fails still fails the rule,
+    -- at the point where the reference fails it.
+    Applied Builtin [a] [a]
   | -- | An operator outside the builtin set, applied to its operands. Its
     -- behaviour is supplied by the caller.
     CustomOp OperatorName [a]
@@ -165,8 +168,9 @@ instance Eq1 Node where
 instance Show1 Node where
   liftShowsPrec showsChild _ d = showsPrec d . fmap (Shown . flip showsChild)
 
--- | A rule as read from JSON: every node carries its 'Location'.
-type Rule = Fix Node
+-- | A rule as read from JSON: every node carries its 'Location'. (Not to be
+-- confused with 'JsonLogic.Rule', the compiled, opaque rule.)
+type RuleTree = Fix Node
 
 -- | A value shown by a function, so that a derived 'Show' can be reused to
 -- write 'Show1' instances.

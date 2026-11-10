@@ -21,7 +21,7 @@ json :: String -> Value
 json text = fromMaybe Null (decode (Char8.pack text))
 
 doubling :: Either OperatorsError Operators
-doubling = operatorsFromList [(OperatorName "double", implementation)]
+doubling = operatorsFromList [(OperatorName "double", pureOperator (Exactly 1) implementation)]
   where
     implementation _ [Number n] = Right (Number (n * 2))
     implementation _ _ = Left "expected one number"
@@ -65,7 +65,7 @@ checks =
     )
   ,
     ( "a custom operator may not shadow a builtin"
-    , either Just (const Nothing) (operatorsFromList [(OperatorName "var", \_ _ -> Right Null)])
+    , either Just (const Nothing) (operatorsFromList [(OperatorName "var", pureOperator (AtLeast 0) (\_ _ -> Right Null))])
         == Just (ReservedOperatorName (OperatorName "var"))
     )
   ]

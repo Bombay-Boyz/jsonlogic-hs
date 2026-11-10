@@ -1,0 +1,10 @@
+[package]
+name = "rsbench"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde_json = "1"
+datalogic-rs = { version = "=5.4.0", features = ["serde_json", "ext-array", "ext-control", "ext-math", "ext-object", "ext-string", "error-handling", "datetime", "templating"] }
+jsonlogic-rs = "0.5.0"
+jsonlogic = "0.5.1"

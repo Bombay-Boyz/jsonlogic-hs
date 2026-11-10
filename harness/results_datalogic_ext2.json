@@ -1,0 +1,1159 @@
+{
+ "datalogic-rs 5.4.0 (all ext + templating)": {
+  "classic": {
+   "pass": 278,
+   "total": 278
+  },
+  "outliers": {
+   "pass": 14955,
+   "total": 26980,
+   "fam": {
+    "arity": {
+     "pass": 232,
+     "total": 630
+    },
+    "unary": {
+     "pass": 768,
+     "total": 2012
+    },
+    "pair": {
+     "pass": 2699,
+     "total": 5015
+    },
+    "triple": {
+     "pass": 670,
+     "total": 1120
+    },
+    "numstr": {
+     "pass": 478,
+     "total": 2376
+    },
+    "numfmt": {
+     "pass": 414,
+     "total": 473
+    },
+    "tie": {
+     "pass": 622,
+     "total": 628
+    },
+    "signedzero": {
+     "pass": 570,
+     "total": 2326
+    },
+    "unicode": {
+     "pass": 2708,
+     "total": 4064
+    },
+    "var": {
+     "pass": 2859,
+     "total": 3262
+    },
+    "collection": {
+     "pass": 1103,
+     "total": 1486
+    },
+    "flow": {
+     "pass": 224,
+     "total": 291
+    },
+    "literal": {
+     "pass": 49,
+     "total": 75
+    },
+    "deep": {
+     "pass": 34,
+     "total": 34
+    },
+    "wide": {
+     "pass": 36,
+     "total": 36
+    },
+    "coercion": {
+     "pass": 850,
+     "total": 2239
+    },
+    "community": {
+     "pass": 639,
+     "total": 913
+    }
+   },
+   "fails": [
+    {
+     "id": "arity-000006",
+     "fam": "arity",
+     "rule": {
+      "var": [
+       {
+        "var": "a"
+       },
+       {
+        "var": "a"
+       }
+      ]
+     },
+     "data": {
+      "a": 5
+     },
+     "expect": {
+      "ok": 5
+     },
+     "got": {
+      "status": "ok",
+      "value": null
+     }
+    },
+    {
+     "id": "arity-000007",
+     "fam": "arity",
+     "rule": {
+      "var": [
+       [
+        1,
+        2,
+        3
+       ],
+       {
+        "+": [
+         {
+          "var": ""
+         },
+         1
+        ]
+       }
+      ]
+     },
+     "data": {
+      "a": 5
+     },
+     "expect": {
+      "ok": null
+     },
+     "got": {
+      "status": "error",
+      "value": "Thrown: {\"type\":\"NaN\"} (in operator: val)"
+     }
+    },
+    {
+     "id": "arity-000009",
+     "fam": "arity",
+     "rule": {
+      "var": [
+       {
+        "var": "a"
+       },
+       {
+        "var": "a"
+       },
+       {
+        "var": "a"
+       }
+      ]
+     },
+     "data": {
+      "a": 5
+     },
+     "expect": {
+      "ok": 5
+     },
+     "got": {
+      "status": "ok",
+      "value": null
+     }
+    },
+    {
+     "id": "unary-000684",
+     "fam": "unary",
+     "rule": {
+      "var": [
+       {
+        "/": [
+         1,
+         0
+        ]
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": null
+     },
+     "got": {
+      "status": "error",
+      "value": "Thrown: {\"type\":\"NaN\"} (in operator: val)"
+     }
+    },
+    {
+     "id": "unary-000686",
+     "fam": "unary",
+     "rule": {
+      "var": [
+       {
+        "+": [
+         "a"
+        ]
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": null
+     },
+     "got": {
+      "status": "error",
+      "value": "Thrown: {\"type\":\"NaN\"} (in operator: val)"
+     }
+    },
+    {
+     "id": "unary-000747",
+     "fam": "unary",
+     "rule": {
+      "missing": [
+       1
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": [
+       1
+      ]
+     },
+     "got": {
+      "status": "ok",
+      "value": []
+     }
+    },
+    {
+     "id": "pair-004669",
+     "fam": "pair",
+     "rule": {
+      "==": [
+       0,
+       null
+      ]
+     },
+     "data": {
+      "a": 1,
+      "b": [
+       1,
+       2
+      ]
+     },
+     "expect": {
+      "ok": false
+     },
+     "got": {
+      "status": "ok",
+      "value": true
+     }
+    },
+    {
+     "id": "pair-004709",
+     "fam": "pair",
+     "rule": {
+      "==": [
+       1,
+       ""
+      ]
+     },
+     "data": {
+      "a": 1,
+      "b": [
+       1,
+       2
+      ]
+     },
+     "expect": {
+      "ok": false
+     },
+     "got": {
+      "status": "error",
+      "value": "Invalid arguments: NaN (in operator: ==)"
+     }
+    },
+    {
+     "id": "pair-004720",
+     "fam": "pair",
+     "rule": {
+      "==": [
+       1,
+       "\ue000"
+      ]
+     },
+     "data": {
+      "a": 1,
+      "b": [
+       1,
+       2
+      ]
+     },
+     "expect": {
+      "ok": false
+     },
+     "got": {
+      "status": "error",
+      "value": "Invalid arguments: NaN (in operator: ==)"
+     }
+    },
+    {
+     "id": "triple-044880",
+     "fam": "triple",
+     "rule": {
+      "<": [
+       0,
+       [
+        1,
+        2
+       ],
+       0
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": false
+     },
+     "got": {
+      "status": "error",
+      "value": "Thrown: {\"type\":\"NaN\"} (in operator: <)"
+     }
+    },
+    {
+     "id": "triple-044913",
+     "fam": "triple",
+     "rule": {
+      "<": [
+       1,
+       "a",
+       1
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": false
+     },
+     "got": {
+      "status": "error",
+      "value": "Thrown: {\"type\":\"NaN\"} (in operator: <)"
+     }
+    },
+    {
+     "id": "triple-044914",
+     "fam": "triple",
+     "rule": {
+      "<": [
+       1,
+       "a",
+       "a"
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": false
+     },
+     "got": {
+      "status": "error",
+      "value": "Thrown: {\"type\":\"NaN\"} (in operator: <)"
+     }
+    },
+    {
+     "id": "numstr-051488",
+     "fam": "numstr",
+     "rule": {
+      "+": [
+       ""
+      ]
+     },
+     "data": {
+      "s": ""
+     },
+     "expect": {
+      "ok": null
+     },
+     "got": {
+      "status": "ok",
+      "value": 0
+     }
+    },
+    {
+     "id": "numstr-051489",
+     "fam": "numstr",
+     "rule": {
+      "*": [
+       "",
+       1
+      ]
+     },
+     "data": {
+      "s": ""
+     },
+     "expect": {
+      "ok": null
+     },
+     "got": {
+      "status": "ok",
+      "value": 0
+     }
+    },
+    {
+     "id": "numstr-051497",
+     "fam": "numstr",
+     "rule": {
+      "min": [
+       "",
+       5
+      ]
+     },
+     "data": {
+      "s": ""
+     },
+     "expect": {
+      "ok": 0
+     },
+     "got": {
+      "status": "error",
+      "value": "Invalid arguments: Invalid Arguments (in operator: min)"
+     }
+    },
+    {
+     "id": "numfmt-055947",
+     "fam": "numfmt",
+     "rule": {
+      "/": [
+       3,
+       0
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": null
+     },
+     "got": {
+      "status": "error",
+      "value": "Thrown: {\"type\":\"NaN\"} (in operator: /)"
+     }
+    },
+    {
+     "id": "numfmt-056038",
+     "fam": "numfmt",
+     "rule": {
+      "cat": [
+       "n=",
+       1e+21
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": "n=1e+21"
+     },
+     "got": {
+      "status": "ok",
+      "value": "n=1e21"
+     }
+    },
+    {
+     "id": "numfmt-056045",
+     "fam": "numfmt",
+     "rule": {
+      "cat": [
+       "n=",
+       1e-07
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": "n=1e-7"
+     },
+     "got": {
+      "status": "ok",
+      "value": "n=0.0000001"
+     }
+    },
+    {
+     "id": "tie-056512",
+     "fam": "tie",
+     "rule": {
+      "cat": [
+       {
+        "/": [
+         18014398509482011,
+         100
+        ]
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": "180143985094820.12"
+     },
+     "got": {
+      "status": "ok",
+      "value": "180143985094820.13"
+     }
+    },
+    {
+     "id": "tie-056682",
+     "fam": "tie",
+     "rule": {
+      "cat": [
+       {
+        "/": [
+         18014398509482062,
+         100
+        ]
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": "180143985094820.62"
+     },
+     "got": {
+      "status": "ok",
+      "value": "180143985094820.63"
+     }
+    },
+    {
+     "id": "tie-056692",
+     "fam": "tie",
+     "rule": {
+      "cat": [
+       {
+        "/": [
+         18014398509482065,
+         100
+        ]
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": "180143985094820.62"
+     },
+     "got": {
+      "status": "ok",
+      "value": "180143985094820.63"
+     }
+    },
+    {
+     "id": "signedzero-057047",
+     "fam": "signedzero",
+     "rule": {
+      ">": [
+       0,
+       {
+        "/": [
+         1,
+         {
+          "max": [
+           0,
+           0
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": false
+     },
+     "got": {
+      "status": "error",
+      "value": "Thrown: {\"type\":\"NaN\"} (in operator: >)"
+     }
+    },
+    {
+     "id": "signedzero-057048",
+     "fam": "signedzero",
+     "rule": {
+      "<": [
+       0,
+       {
+        "/": [
+         1,
+         {
+          "max": [
+           0,
+           0
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": true
+     },
+     "got": {
+      "status": "error",
+      "value": "Thrown: {\"type\":\"NaN\"} (in operator: <)"
+     }
+    },
+    {
+     "id": "signedzero-057050",
+     "fam": "signedzero",
+     "rule": {
+      "===": [
+       {
+        "/": [
+         1,
+         {
+          "max": [
+           0,
+           0
+          ]
+         }
+        ]
+       },
+       {
+        "/": [
+         -1,
+         0
+        ]
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": false
+     },
+     "got": {
+      "status": "error",
+      "value": "Thrown: {\"type\":\"NaN\"} (in operator: ===)"
+     }
+    },
+    {
+     "id": "unicode-064169",
+     "fam": "unicode",
+     "rule": {
+      "substr": [
+       "",
+       -100,
+       {
+        "/": [
+         1,
+         0
+        ]
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": ""
+     },
+     "got": {
+      "status": "error",
+      "value": "Thrown: {\"type\":\"NaN\"} (in operator: substr)"
+     }
+    },
+    {
+     "id": "unicode-064183",
+     "fam": "unicode",
+     "rule": {
+      "substr": [
+       "",
+       -3,
+       {
+        "+": [
+         "a"
+        ]
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": ""
+     },
+     "got": {
+      "status": "error",
+      "value": "Thrown: {\"type\":\"NaN\"} (in operator: substr)"
+     }
+    },
+    {
+     "id": "unicode-064186",
+     "fam": "unicode",
+     "rule": {
+      "substr": [
+       "",
+       -3,
+       {
+        "/": [
+         1,
+         0
+        ]
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": ""
+     },
+     "got": {
+      "status": "error",
+      "value": "Thrown: {\"type\":\"NaN\"} (in operator: substr)"
+     }
+    },
+    {
+     "id": "var-088901",
+     "fam": "var",
+     "rule": {
+      "missing_some": [
+       1,
+       [
+        "",
+        "a"
+       ]
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": [
+       "",
+       "a"
+      ]
+     },
+     "got": {
+      "status": "ok",
+      "value": []
+     }
+    },
+    {
+     "id": "var-089242",
+     "fam": "var",
+     "rule": {
+      "missing_some": [
+       1,
+       [
+        0,
+        "a"
+       ]
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": [
+       0,
+       "a"
+      ]
+     },
+     "got": {
+      "status": "ok",
+      "value": [
+       "a"
+      ]
+     }
+    },
+    {
+     "id": "var-089253",
+     "fam": "var",
+     "rule": {
+      "missing": [
+       [
+        1.5,
+        "a"
+       ]
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": [
+       1.5,
+       "a"
+      ]
+     },
+     "got": {
+      "status": "ok",
+      "value": [
+       "a"
+      ]
+     }
+    },
+    {
+     "id": "collection-108428",
+     "fam": "collection",
+     "rule": {
+      "map": [
+       [
+        0,
+        0
+       ],
+       {
+        "+": [
+         {
+          "var": "current"
+         },
+         {
+          "var": "accumulator"
+         }
+        ]
+       }
+      ]
+     },
+     "data": {
+      "xs": [
+       1,
+       2,
+       3
+      ],
+      "o": {
+       "a": 1
+      },
+      "a": 9
+     },
+     "expect": {
+      "ok": [
+       null,
+       null
+      ]
+     },
+     "got": {
+      "status": "ok",
+      "value": [
+       0,
+       0
+      ]
+     }
+    },
+    {
+     "id": "collection-108467",
+     "fam": "collection",
+     "rule": {
+      "map": [
+       [
+        null
+       ],
+       {
+        "max": [
+         {
+          "var": "current"
+         },
+         {
+          "var": "accumulator"
+         }
+        ]
+       }
+      ]
+     },
+     "data": {
+      "xs": [
+       1,
+       2,
+       3
+      ],
+      "o": {
+       "a": 1
+      },
+      "a": 9
+     },
+     "expect": {
+      "ok": [
+       0
+      ]
+     },
+     "got": {
+      "status": "error",
+      "value": "Invalid arguments: Invalid Arguments (in operator: map)"
+     }
+    },
+    {
+     "id": "collection-108496",
+     "fam": "collection",
+     "rule": {
+      "map": [
+       [
+        [
+         1
+        ],
+        [
+         2
+        ]
+       ],
+       {
+        "/": [
+         1,
+         {
+          "var": ""
+         }
+        ]
+       }
+      ]
+     },
+     "data": {
+      "xs": [
+       1,
+       2,
+       3
+      ],
+      "o": {
+       "a": 1
+      },
+      "a": 9
+     },
+     "expect": {
+      "ok": [
+       1,
+       0.5
+      ]
+     },
+     "got": {
+      "status": "error",
+      "value": "Thrown: {\"type\":\"NaN\"} (in operator: map)"
+     }
+    },
+    {
+     "id": "flow-120333",
+     "fam": "flow",
+     "rule": {
+      "if": [
+       {
+        "+": [
+         "a"
+        ]
+       },
+       1,
+       2
+      ]
+     },
+     "data": {
+      "a": 1
+     },
+     "expect": {
+      "ok": 2
+     },
+     "got": {
+      "status": "error",
+      "value": "Thrown: {\"type\":\"NaN\"} (in operator: if)"
+     }
+    },
+    {
+     "id": "flow-120334",
+     "fam": "flow",
+     "rule": {
+      "if": [
+       {},
+       1,
+       2
+      ]
+     },
+     "data": {
+      "a": 1
+     },
+     "expect": {
+      "ok": 1
+     },
+     "got": {
+      "status": "ok",
+      "value": 2
+     }
+    },
+    {
+     "id": "flow-120351",
+     "fam": "flow",
+     "rule": {
+      "and": [
+       {},
+       []
+      ]
+     },
+     "data": {
+      "a": 1
+     },
+     "expect": {
+      "ok": []
+     },
+     "got": {
+      "status": "ok",
+      "value": {}
+     }
+    },
+    {
+     "id": "literal-120558",
+     "fam": "literal",
+     "rule": {
+      "max": [
+       []
+      ]
+     },
+     "data": {
+      "a": 7
+     },
+     "expect": {
+      "ok": 0
+     },
+     "got": {
+      "status": "error",
+      "value": "Invalid arguments: Invalid Arguments (in operator: max)"
+     }
+    },
+    {
+     "id": "literal-120562",
+     "fam": "literal",
+     "rule": {
+      "cat": [
+       [
+        1,
+        [
+         2
+        ]
+       ]
+      ]
+     },
+     "data": {
+      "a": 7
+     },
+     "expect": {
+      "ok": "1,2"
+     },
+     "got": {
+      "status": "ok",
+      "value": "1[2]"
+     }
+    },
+    {
+     "id": "literal-120563",
+     "fam": "literal",
+     "rule": {
+      "max": [
+       [
+        1,
+        [
+         2
+        ]
+       ]
+      ]
+     },
+     "data": {
+      "a": 7
+     },
+     "expect": {
+      "ok": null
+     },
+     "got": {
+      "status": "error",
+      "value": "Invalid arguments: Invalid Arguments (in operator: max)"
+     }
+    },
+    {
+     "id": "coercion-120711",
+     "fam": "coercion",
+     "rule": {
+      "/": [
+       null,
+       null
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": null
+     },
+     "got": {
+      "status": "ok",
+      "value": 0
+     }
+    },
+    {
+     "id": "coercion-120717",
+     "fam": "coercion",
+     "rule": {
+      "substr": [
+       null,
+       null
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": "null"
+     },
+     "got": {
+      "status": "ok",
+      "value": ""
+     }
+    },
+    {
+     "id": "coercion-120721",
+     "fam": "coercion",
+     "rule": {
+      "!==": [
+       null,
+       {
+        "and": []
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": true
+     },
+     "got": {
+      "status": "ok",
+      "value": false
+     }
+    },
+    {
+     "id": "community-139014",
+     "fam": "community",
+     "rule": {
+      "+": [
+       true,
+       false,
+       true
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": null
+     },
+     "got": {
+      "status": "ok",
+      "value": 2
+     }
+    },
+    {
+     "id": "community-139015",
+     "fam": "community",
+     "rule": {
+      "+": [
+       1,
+       "2",
+       3,
+       "4",
+       "",
+       true,
+       false,
+       null
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": null
+     },
+     "got": {
+      "status": "ok",
+      "value": 11
+     }
+    },
+    {
+     "id": "community-139025",
+     "fam": "community",
+     "rule": {
+      "+": true
+     },
+     "data": null,
+     "expect": {
+      "ok": null
+     },
+     "got": {
+      "status": "ok",
+      "value": 1
+     }
+    }
+   ],
+   "unparsable": 0,
+   "panics": 0
+  },
+  "community": {
+   "pass": 1105,
+   "total": 1138
+  }
+ }
+}

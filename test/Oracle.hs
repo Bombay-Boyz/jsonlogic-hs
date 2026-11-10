@@ -39,7 +39,7 @@ import JsonLogic.Core.Eval (compileRule, runProgram)
 import JsonLogic.Core.Location (Location)
 import JsonLogic.Core.Number (shortestDecimal)
 import JsonLogic.Core.Parse (parseRuleWith)
-import JsonLogic.Core.Rule (Node (..), Rule, RuleF)
+import JsonLogic.Core.Rule (Node (..), RuleF, RuleTree)
 
 twoTo53 :: Double
 twoTo53 = 9007199254740992
@@ -155,13 +155,13 @@ charAtOracle i text
 type Term = Fix RuleF
 
 -- | Forget where every node came from.
-stripLocations :: Rule -> Term
+stripLocations :: RuleTree -> Term
 stripLocations = foldFix (Fix . nodeRule)
 
 -- | Read a rule with 'defaultConfig'.
-parseRule :: Value -> Either (Location, ParseError) Rule
+parseRule :: Value -> Either (Location, ParseError) RuleTree
 parseRule = parseRuleWith defaultConfig
 
 -- | Compile and run with 'defaultConfig' and no custom operators.
-evaluate :: Rule -> Value -> Either (Location, EvalError) Value
+evaluate :: RuleTree -> Value -> Either (Location, EvalError) Value
 evaluate = runProgram . compileRule defaultConfig noOperators

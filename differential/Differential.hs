@@ -230,6 +230,8 @@ genRule ctx depth
         , (2, genIf ctx depth)
         , (1, genArrayRule ctx depth)
         , (2, genStringFocus)
+        , (1, genSurrogateFocus)
+        , (1, genSurplusFocus)
         ]
 
 -- | Between @low@ and @high@ sub-rules.
@@ -250,6 +252,45 @@ genStringFocus = do
     , (2, (\op -> call op [a]) <$> elements ["+", "-", "!", "!!", "max", "min", "*"])
     , (2, (\op -> call op [a, toJSON (1 :: Int)]) <$> elements ["+", "*", "/", "%", "-", "<", "=="])
     ]
+
+-- | Slices that cut a surrogate pair in two, compared, ordered, searched for
+-- and joined again: the halves must stay unequal, order by code unit, and
+-- re-join into the character, as in JavaScript.
+genSurrogateFocus :: Gen Value
+genSurrogateFocus = do
+  source <- String <$> elements ["\x1F600", "a\x1F600\&b", "\x1F680\x1F600", "\x1F600\x1F680\&x"]
+  let half = do
+        start <- choose (0, 5) :: Gen Int
+        len <- choose (1, 2) :: Gen Int
+        pure (call "substr" [source, toJSON start, toJSON len])
+  a <- half
+  b <- half
+  frequency
+    [ (4, (\op -> call op [a, b]) <$> elements ["==", "===", "!=", "!==", "<", "<=", ">", ">=", "in"])
+    , (3, pure (call "cat" [a, b]))
+    , (2, (\op -> call op [call "cat" [a, b], source]) <$> elements ["===", "==", "in"])
+    , (1, (\op -> call op [a, source]) <$> elements ["in", "==", "<"])
+    ]
+
+-- | A builtin given one operand more than it takes (which only lenient mode
+-- accepts), where the extra operand is evaluated before the operator is
+-- applied. When both the extra operand and the operator can fail, the
+-- reference reports the extra operand's failure.
+genSurplusFocus :: Gen Value
+genSurplusFocus = do
+  extra <- elements [call "nope" [], toJSON (1 :: Int), Null, String "x"]
+  (op, operands) <-
+    elements
+      [ ("missing_some", [toJSON (1 :: Int), Null])
+      , ("missing_some", [toJSON (1 :: Int), toJSON ["a" :: Text]])
+      , ("!", [toJSON (0 :: Int)])
+      , ("!!", [String "x"])
+      , ("==", [toJSON (1 :: Int), toJSON (1 :: Int)])
+      , ("var", [String "a", toJSON (2 :: Int)])
+      , ("-", [toJSON (5 :: Int), toJSON (2 :: Int)])
+      , ("in", [String "a", String "abc"])
+      ]
+  pure (call op (operands ++ [extra]))
 
 genLogic :: Ctx -> Int -> Gen Value
 genLogic ctx depth =
@@ -456,8 +497,8 @@ judgeOne (ReferenceError message) (Left e) = case errorClass e of
 -- | The messages the reference gives for each class of library error.
 errorClass :: Error -> Maybe [String]
 errorClass (EvalFailure _ (UnknownOperator _)) = Just ["Unrecognized operation", "apply is not a function"]
-errorClass (EvalFailure _ (InvalidOperand (OperatorName "*"))) = Just ["Reduce of empty array"]
-errorClass (EvalFailure _ (InvalidOperand _)) = Just ["Cannot read properties"]
+errorClass (EvalFailure _ (InvalidOperand (OperatorName "*") _)) = Just ["Reduce of empty array"]
+errorClass (EvalFailure _ (InvalidOperand _ _)) = Just ["Cannot read properties"]
 errorClass _ = Nothing
 
 json :: Value -> String

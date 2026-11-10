@@ -1,0 +1,1158 @@
+{
+ "jsonlogic-rs 0.5.0": {
+  "classic": {
+   "pass": 276,
+   "total": 278
+  },
+  "outliers": {
+   "pass": 13801,
+   "total": 26980,
+   "fam": {
+    "arity": {
+     "pass": 216,
+     "total": 630
+    },
+    "unary": {
+     "pass": 741,
+     "total": 2012
+    },
+    "pair": {
+     "pass": 2369,
+     "total": 5015
+    },
+    "triple": {
+     "pass": 396,
+     "total": 1120
+    },
+    "numstr": {
+     "pass": 1245,
+     "total": 2376
+    },
+    "numfmt": {
+     "pass": 357,
+     "total": 473
+    },
+    "tie": {
+     "pass": 624,
+     "total": 628
+    },
+    "signedzero": {
+     "pass": 570,
+     "total": 2326
+    },
+    "unicode": {
+     "pass": 2246,
+     "total": 4064
+    },
+    "var": {
+     "pass": 2334,
+     "total": 3262
+    },
+    "collection": {
+     "pass": 721,
+     "total": 1486
+    },
+    "flow": {
+     "pass": 114,
+     "total": 291
+    },
+    "literal": {
+     "pass": 33,
+     "total": 75
+    },
+    "deep": {
+     "pass": 34,
+     "total": 34
+    },
+    "wide": {
+     "pass": 36,
+     "total": 36
+    },
+    "coercion": {
+     "pass": 1053,
+     "total": 2239
+    },
+    "community": {
+     "pass": 712,
+     "total": 913
+    }
+   },
+   "fails": [
+    {
+     "id": "arity-000004",
+     "fam": "arity",
+     "rule": {
+      "var": [
+       [
+        1,
+        2,
+        3
+       ]
+      ]
+     },
+     "data": {
+      "a": 5
+     },
+     "expect": {
+      "ok": null
+     },
+     "got": {
+      "status": "error",
+      "value": "Invalid variable key - 'Array [Number(1), Number(2), Number(3)]', reason: \"Varia"
+     }
+    },
+    {
+     "id": "arity-000007",
+     "fam": "arity",
+     "rule": {
+      "var": [
+       [
+        1,
+        2,
+        3
+       ],
+       {
+        "+": [
+         {
+          "var": ""
+         },
+         1
+        ]
+       }
+      ]
+     },
+     "data": {
+      "a": 5
+     },
+     "expect": {
+      "ok": null
+     },
+     "got": {
+      "status": "error",
+      "value": "Invalid argument for '+' - 'Object {\"a\": Number(5)}', reason: Argument could not"
+     }
+    },
+    {
+     "id": "arity-000008",
+     "fam": "arity",
+     "rule": {
+      "var": [
+       1,
+       "a",
+       [
+        1,
+        2
+       ]
+      ]
+     },
+     "data": {
+      "a": 5
+     },
+     "expect": {
+      "ok": "a"
+     },
+     "got": {
+      "status": "error",
+      "value": "Wrong argument count - expected: Variadic(0..3), actual: 3"
+     }
+    },
+    {
+     "id": "unary-000638",
+     "fam": "unary",
+     "rule": {
+      "var": [
+       -0.5
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": null
+     },
+     "got": {
+      "status": "error",
+      "value": "Invalid variable key - 'Number(-0.5)', reason: \"Numeric keys must be valid integ"
+     }
+    },
+    {
+     "id": "unary-000640",
+     "fam": "unary",
+     "rule": {
+      "var": [
+       -2.5
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": null
+     },
+     "got": {
+      "status": "error",
+      "value": "Invalid variable key - 'Number(-2.5)', reason: \"Numeric keys must be valid integ"
+     }
+    },
+    {
+     "id": "unary-000641",
+     "fam": "unary",
+     "rule": {
+      "var": [
+       3.5
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": null
+     },
+     "got": {
+      "status": "error",
+      "value": "Invalid variable key - 'Number(3.5)', reason: \"Numeric keys must be valid intege"
+     }
+    },
+    {
+     "id": "pair-004799",
+     "fam": "pair",
+     "rule": {
+      "==": [
+       0.5,
+       {
+        "a": 1
+       }
+      ]
+     },
+     "data": {
+      "a": 1,
+      "b": [
+       1,
+       2
+      ]
+     },
+     "expect": {
+      "error": "Unrecognized operation a"
+     },
+     "got": {
+      "status": "ok",
+      "value": false
+     }
+    },
+    {
+     "id": "pair-004811",
+     "fam": "pair",
+     "rule": {
+      "==": [
+       1e+21,
+       {
+        "/": [
+         -1,
+         0
+        ]
+       }
+      ]
+     },
+     "data": {
+      "a": 1,
+      "b": [
+       1,
+       2
+      ]
+     },
+     "expect": {
+      "ok": false
+     },
+     "got": {
+      "status": "error",
+      "value": "Encountered an unexpected error. Please raise an issue on GitHub and include the"
+     }
+    },
+    {
+     "id": "pair-004883",
+     "fam": "pair",
+     "rule": {
+      "==": [
+       5e-324,
+       {
+        "/": [
+         -1,
+         0
+        ]
+       }
+      ]
+     },
+     "data": {
+      "a": 1,
+      "b": [
+       1,
+       2
+      ]
+     },
+     "expect": {
+      "ok": false
+     },
+     "got": {
+      "status": "error",
+      "value": "Encountered an unexpected error. Please raise an issue on GitHub and include the"
+     }
+    },
+    {
+     "id": "triple-044861",
+     "fam": "triple",
+     "rule": {
+      "<": [
+       0,
+       "",
+       {
+        "and": []
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": false
+     },
+     "got": {
+      "status": "error",
+      "value": "Wrong argument count - expected: AtLeast(1), actual: 0"
+     }
+    },
+    {
+     "id": "triple-044875",
+     "fam": "triple",
+     "rule": {
+      "<": [
+       0,
+       {
+        "and": []
+       },
+       ""
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": false
+     },
+     "got": {
+      "status": "error",
+      "value": "Wrong argument count - expected: AtLeast(1), actual: 0"
+     }
+    },
+    {
+     "id": "triple-044917",
+     "fam": "triple",
+     "rule": {
+      "<": [
+       1,
+       "a",
+       {
+        "and": []
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": false
+     },
+     "got": {
+      "status": "error",
+      "value": "Wrong argument count - expected: AtLeast(1), actual: 0"
+     }
+    },
+    {
+     "id": "numstr-051488",
+     "fam": "numstr",
+     "rule": {
+      "+": [
+       ""
+      ]
+     },
+     "data": {
+      "s": ""
+     },
+     "expect": {
+      "ok": null
+     },
+     "got": {
+      "status": "error",
+      "value": "Invalid argument for '+' - 'String(\"\")', reason: Argument could not be converted"
+     }
+    },
+    {
+     "id": "numstr-051489",
+     "fam": "numstr",
+     "rule": {
+      "*": [
+       "",
+       1
+      ]
+     },
+     "data": {
+      "s": ""
+     },
+     "expect": {
+      "ok": null
+     },
+     "got": {
+      "status": "error",
+      "value": "Invalid argument for '*' - 'String(\"\")', reason: Argument could not be converted"
+     }
+    },
+    {
+     "id": "numstr-051498",
+     "fam": "numstr",
+     "rule": {
+      "cat": [
+       {
+        "+": [
+         ""
+        ]
+       }
+      ]
+     },
+     "data": {
+      "s": ""
+     },
+     "expect": {
+      "ok": "NaN"
+     },
+     "got": {
+      "status": "error",
+      "value": "Invalid argument for '+' - 'String(\"\")', reason: Argument could not be converted"
+     }
+    },
+    {
+     "id": "numfmt-055947",
+     "fam": "numfmt",
+     "rule": {
+      "/": [
+       3,
+       0
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": null
+     },
+     "got": {
+      "status": "error",
+      "value": "Encountered an unexpected error. Please raise an issue on GitHub and include the"
+     }
+    },
+    {
+     "id": "numfmt-056033",
+     "fam": "numfmt",
+     "rule": {
+      "*": [
+       1e+21,
+       1
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": 1e+21
+     },
+     "got": {
+      "status": "ok",
+      "value": 9223372036854775807
+     }
+    },
+    {
+     "id": "numfmt-056034",
+     "fam": "numfmt",
+     "rule": {
+      "-": [
+       1e+21,
+       0
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": 1e+21
+     },
+     "got": {
+      "status": "ok",
+      "value": 9223372036854775807
+     }
+    },
+    {
+     "id": "tie-057024",
+     "fam": "tie",
+     "rule": {
+      "/": [
+       4503599627370495.5,
+       1
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": 4503599627370495.5
+     },
+     "got": {
+      "status": "ok",
+      "value": 4503599627370495
+     }
+    },
+    {
+     "id": "tie-057025",
+     "fam": "tie",
+     "rule": {
+      "/": [
+       4503599627370495.5,
+       10
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": 450359962737049.56
+     },
+     "got": {
+      "status": "ok",
+      "value": 450359962737049.5
+     }
+    },
+    {
+     "id": "tie-057027",
+     "fam": "tie",
+     "rule": {
+      "/": [
+       4503599627370495.5,
+       3
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": 1501199875790165.2
+     },
+     "got": {
+      "status": "ok",
+      "value": 1501199875790165
+     }
+    },
+    {
+     "id": "signedzero-057047",
+     "fam": "signedzero",
+     "rule": {
+      ">": [
+       0,
+       {
+        "/": [
+         1,
+         {
+          "max": [
+           0,
+           0
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": false
+     },
+     "got": {
+      "status": "error",
+      "value": "Encountered an unexpected error. Please raise an issue on GitHub and include the"
+     }
+    },
+    {
+     "id": "signedzero-057048",
+     "fam": "signedzero",
+     "rule": {
+      "<": [
+       0,
+       {
+        "/": [
+         1,
+         {
+          "max": [
+           0,
+           0
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": true
+     },
+     "got": {
+      "status": "error",
+      "value": "Encountered an unexpected error. Please raise an issue on GitHub and include the"
+     }
+    },
+    {
+     "id": "signedzero-057050",
+     "fam": "signedzero",
+     "rule": {
+      "===": [
+       {
+        "/": [
+         1,
+         {
+          "max": [
+           0,
+           0
+          ]
+         }
+        ]
+       },
+       {
+        "/": [
+         -1,
+         0
+        ]
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": false
+     },
+     "got": {
+      "status": "error",
+      "value": "Encountered an unexpected error. Please raise an issue on GitHub and include the"
+     }
+    },
+    {
+     "id": "unicode-064168",
+     "fam": "unicode",
+     "rule": {
+      "substr": [
+       "",
+       -100,
+       "2"
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": ""
+     },
+     "got": {
+      "status": "error",
+      "value": "Invalid argument for 'substr' - 'String(\"2\")', reason: Optional third argument t"
+     }
+    },
+    {
+     "id": "unicode-064169",
+     "fam": "unicode",
+     "rule": {
+      "substr": [
+       "",
+       -100,
+       {
+        "/": [
+         1,
+         0
+        ]
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": ""
+     },
+     "got": {
+      "status": "error",
+      "value": "Encountered an unexpected error. Please raise an issue on GitHub and include the"
+     }
+    },
+    {
+     "id": "unicode-064183",
+     "fam": "unicode",
+     "rule": {
+      "substr": [
+       "",
+       -3,
+       {
+        "+": [
+         "a"
+        ]
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": ""
+     },
+     "got": {
+      "status": "error",
+      "value": "Invalid argument for '+' - 'String(\"a\")', reason: Argument could not be converte"
+     }
+    },
+    {
+     "id": "var-088901",
+     "fam": "var",
+     "rule": {
+      "missing_some": [
+       1,
+       [
+        "",
+        "a"
+       ]
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": [
+       "",
+       "a"
+      ]
+     },
+     "got": {
+      "status": "ok",
+      "value": []
+     }
+    },
+    {
+     "id": "var-088950",
+     "fam": "var",
+     "rule": {
+      "var": [
+       "a.",
+       {
+        "and": []
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": null
+     },
+     "got": {
+      "status": "error",
+      "value": "Wrong argument count - expected: AtLeast(1), actual: 0"
+     }
+    },
+    {
+     "id": "var-088957",
+     "fam": "var",
+     "rule": {
+      "var": [
+       ".a",
+       {
+        "and": []
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": null
+     },
+     "got": {
+      "status": "error",
+      "value": "Wrong argument count - expected: AtLeast(1), actual: 0"
+     }
+    },
+    {
+     "id": "collection-108379",
+     "fam": "collection",
+     "rule": {
+      "map": [
+       [
+        1
+       ],
+       {
+        "and": []
+       }
+      ]
+     },
+     "data": {
+      "xs": [
+       1,
+       2,
+       3
+      ],
+      "o": {
+       "a": 1
+      },
+      "a": 9
+     },
+     "expect": {
+      "ok": [
+       null
+      ]
+     },
+     "got": {
+      "status": "error",
+      "value": "Wrong argument count - expected: AtLeast(1), actual: 0"
+     }
+    },
+    {
+     "id": "collection-108428",
+     "fam": "collection",
+     "rule": {
+      "map": [
+       [
+        0,
+        0
+       ],
+       {
+        "+": [
+         {
+          "var": "current"
+         },
+         {
+          "var": "accumulator"
+         }
+        ]
+       }
+      ]
+     },
+     "data": {
+      "xs": [
+       1,
+       2,
+       3
+      ],
+      "o": {
+       "a": 1
+      },
+      "a": 9
+     },
+     "expect": {
+      "ok": [
+       null,
+       null
+      ]
+     },
+     "got": {
+      "status": "error",
+      "value": "Invalid argument for '+' - 'Null', reason: Argument could not be converted to a "
+     }
+    },
+    {
+     "id": "collection-108460",
+     "fam": "collection",
+     "rule": {
+      "map": [
+       [
+        null
+       ],
+       {
+        "nonexistent": []
+       }
+      ]
+     },
+     "data": {
+      "xs": [
+       1,
+       2,
+       3
+      ],
+      "o": {
+       "a": 1
+      },
+      "a": 9
+     },
+     "expect": {
+      "error": "Unrecognized operation nonexistent"
+     },
+     "got": {
+      "status": "ok",
+      "value": [
+       {
+        "nonexistent": []
+       }
+      ]
+     }
+    },
+    {
+     "id": "flow-120326",
+     "fam": "flow",
+     "rule": {
+      "if": [
+       {
+        "nonexistent": []
+       }
+      ]
+     },
+     "data": {
+      "a": 1
+     },
+     "expect": {
+      "error": "Unrecognized operation nonexistent"
+     },
+     "got": {
+      "status": "ok",
+      "value": {
+       "nonexistent": []
+      }
+     }
+    },
+    {
+     "id": "flow-120327",
+     "fam": "flow",
+     "rule": {
+      "if": [
+       true,
+       {
+        "nonexistent": []
+       }
+      ]
+     },
+     "data": {
+      "a": 1
+     },
+     "expect": {
+      "error": "Unrecognized operation nonexistent"
+     },
+     "got": {
+      "status": "ok",
+      "value": {
+       "nonexistent": []
+      }
+     }
+    },
+    {
+     "id": "flow-120333",
+     "fam": "flow",
+     "rule": {
+      "if": [
+       {
+        "+": [
+         "a"
+        ]
+       },
+       1,
+       2
+      ]
+     },
+     "data": {
+      "a": 1
+     },
+     "expect": {
+      "ok": 2
+     },
+     "got": {
+      "status": "error",
+      "value": "Invalid argument for '+' - 'String(\"a\")', reason: Argument could not be converte"
+     }
+    },
+    {
+     "id": "literal-120563",
+     "fam": "literal",
+     "rule": {
+      "max": [
+       [
+        1,
+        [
+         2
+        ]
+       ]
+      ]
+     },
+     "data": {
+      "a": 7
+     },
+     "expect": {
+      "ok": null
+     },
+     "got": {
+      "status": "error",
+      "value": "Invalid argument for 'max' - 'Array [Number(1), Array [Number(2)]]', reason: Cou"
+     }
+    },
+    {
+     "id": "literal-120565",
+     "fam": "literal",
+     "rule": [
+      {
+       "var": "a"
+      }
+     ],
+     "data": {
+      "a": 7
+     },
+     "expect": {
+      "ok": [
+       7
+      ]
+     },
+     "got": {
+      "status": "ok",
+      "value": [
+       {
+        "var": "a"
+       }
+      ]
+     }
+    },
+    {
+     "id": "literal-120566",
+     "fam": "literal",
+     "rule": {
+      "merge": [
+       [
+        {
+         "var": "a"
+        }
+       ]
+      ]
+     },
+     "data": {
+      "a": 7
+     },
+     "expect": {
+      "ok": [
+       7
+      ]
+     },
+     "got": {
+      "status": "ok",
+      "value": [
+       {
+        "var": "a"
+       }
+      ]
+     }
+    },
+    {
+     "id": "coercion-120711",
+     "fam": "coercion",
+     "rule": {
+      "/": [
+       null,
+       null
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": null
+     },
+     "got": {
+      "status": "error",
+      "value": "Encountered an unexpected error. Please raise an issue on GitHub and include the"
+     }
+    },
+    {
+     "id": "coercion-120717",
+     "fam": "coercion",
+     "rule": {
+      "substr": [
+       null,
+       null
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": "null"
+     },
+     "got": {
+      "status": "error",
+      "value": "Invalid argument for 'substr' - 'Null', reason: First argument to substr must be"
+     }
+    },
+    {
+     "id": "coercion-120721",
+     "fam": "coercion",
+     "rule": {
+      "!==": [
+       null,
+       {
+        "and": []
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": true
+     },
+     "got": {
+      "status": "error",
+      "value": "Wrong argument count - expected: AtLeast(1), actual: 0"
+     }
+    },
+    {
+     "id": "community-138922",
+     "fam": "community",
+     "rule": [
+      1,
+      {
+       "var": "x"
+      },
+      3
+     ],
+     "data": {
+      "x": 2
+     },
+     "expect": {
+      "ok": [
+       1,
+       2,
+       3
+      ]
+     },
+     "got": {
+      "status": "ok",
+      "value": [
+       1,
+       {
+        "var": "x"
+       },
+       3
+      ]
+     }
+    },
+    {
+     "id": "community-138923",
+     "fam": "community",
+     "rule": {
+      "if": [
+       {
+        "var": "x"
+       },
+       [
+        {
+         "var": "y"
+        }
+       ],
+       99
+      ]
+     },
+     "data": {
+      "x": true,
+      "y": 42
+     },
+     "expect": {
+      "ok": [
+       42
+      ]
+     },
+     "got": {
+      "status": "ok",
+      "value": [
+       {
+        "var": "y"
+       }
+      ]
+     }
+    },
+    {
+     "id": "community-139014",
+     "fam": "community",
+     "rule": {
+      "+": [
+       true,
+       false,
+       true
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": null
+     },
+     "got": {
+      "status": "error",
+      "value": "Invalid argument for '+' - 'Bool(true)', reason: Argument could not be converted"
+     }
+    }
+   ],
+   "unparsable": 73,
+   "panics": 0
+  },
+  "community": {
+   "pass": 782,
+   "total": 1138
+  }
+ }
+}
