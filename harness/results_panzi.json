@@ -1,0 +1,1171 @@
+{
+ "panzi-json-logic 1.0.1": {
+  "classic": {
+   "pass": 277,
+   "total": 278
+  },
+  "outliers": {
+   "pass": 21361,
+   "total": 26980,
+   "fam": {
+    "arity": {
+     "pass": 544,
+     "total": 630
+    },
+    "unary": {
+     "pass": 1632,
+     "total": 2012
+    },
+    "pair": {
+     "pass": 4041,
+     "total": 5015
+    },
+    "triple": {
+     "pass": 825,
+     "total": 1120
+    },
+    "numstr": {
+     "pass": 1776,
+     "total": 2376
+    },
+    "numfmt": {
+     "pass": 423,
+     "total": 473
+    },
+    "tie": {
+     "pass": 473,
+     "total": 628
+    },
+    "signedzero": {
+     "pass": 775,
+     "total": 2326
+    },
+    "unicode": {
+     "pass": 3481,
+     "total": 4064
+    },
+    "var": {
+     "pass": 3188,
+     "total": 3262
+    },
+    "collection": {
+     "pass": 1333,
+     "total": 1486
+    },
+    "flow": {
+     "pass": 244,
+     "total": 291
+    },
+    "literal": {
+     "pass": 66,
+     "total": 75
+    },
+    "deep": {
+     "pass": 34,
+     "total": 34
+    },
+    "wide": {
+     "pass": 36,
+     "total": 36
+    },
+    "coercion": {
+     "pass": 1637,
+     "total": 2239
+    },
+    "community": {
+     "pass": 853,
+     "total": 913
+    }
+   },
+   "fails": [
+    {
+     "id": "arity-000008",
+     "fam": "arity",
+     "rule": {
+      "var": [
+       1,
+       "a",
+       [
+        1,
+        2
+       ]
+      ]
+     },
+     "data": {
+      "a": 5
+     },
+     "expect": {
+      "ok": "a"
+     },
+     "got": {
+      "threw": "TypeError: op_var() takes from 0 to 3 positional arguments but 4 were given"
+     }
+    },
+    {
+     "id": "arity-000009",
+     "fam": "arity",
+     "rule": {
+      "var": [
+       {
+        "var": "a"
+       },
+       {
+        "var": "a"
+       },
+       {
+        "var": "a"
+       }
+      ]
+     },
+     "data": {
+      "a": 5
+     },
+     "expect": {
+      "ok": 5
+     },
+     "got": {
+      "threw": "TypeError: op_var() takes from 0 to 3 positional arguments but 4 were given"
+     }
+    },
+    {
+     "id": "arity-000010",
+     "fam": "arity",
+     "rule": {
+      "var": [
+       [
+        1,
+        2,
+        3
+       ],
+       {
+        "+": [
+         {
+          "var": ""
+         },
+         1
+        ]
+       },
+       0
+      ]
+     },
+     "data": {
+      "a": 5
+     },
+     "expect": {
+      "ok": null
+     },
+     "got": {
+      "threw": "TypeError: op_var() takes from 0 to 3 positional arguments but 4 were given"
+     }
+    },
+    {
+     "id": "unary-000684",
+     "fam": "unary",
+     "rule": {
+      "var": [
+       {
+        "/": [
+         1,
+         0
+        ]
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": null
+     },
+     "got": {
+      "threw": "ZeroDivisionError: division by zero"
+     }
+    },
+    {
+     "id": "unary-000800",
+     "fam": "unary",
+     "rule": {
+      "missing": [
+       {
+        "/": [
+         -1,
+         0
+        ]
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": [
+       null
+      ]
+     },
+     "got": {
+      "threw": "ZeroDivisionError: division by zero"
+     }
+    },
+    {
+     "id": "unary-000914",
+     "fam": "unary",
+     "rule": {
+      "!": [
+       {
+        "/": [
+         1,
+         0
+        ]
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": false
+     },
+     "got": {
+      "threw": "ZeroDivisionError: division by zero"
+     }
+    },
+    {
+     "id": "pair-004669",
+     "fam": "pair",
+     "rule": {
+      "==": [
+       0,
+       null
+      ]
+     },
+     "data": {
+      "a": 1,
+      "b": [
+       1,
+       2
+      ]
+     },
+     "expect": {
+      "ok": false
+     },
+     "got": {
+      "ok": true
+     }
+    },
+    {
+     "id": "pair-004811",
+     "fam": "pair",
+     "rule": {
+      "==": [
+       1e+21,
+       {
+        "/": [
+         -1,
+         0
+        ]
+       }
+      ]
+     },
+     "data": {
+      "a": 1,
+      "b": [
+       1,
+       2
+      ]
+     },
+     "expect": {
+      "ok": false
+     },
+     "got": {
+      "threw": "ZeroDivisionError: division by zero"
+     }
+    },
+    {
+     "id": "pair-004883",
+     "fam": "pair",
+     "rule": {
+      "==": [
+       5e-324,
+       {
+        "/": [
+         -1,
+         0
+        ]
+       }
+      ]
+     },
+     "data": {
+      "a": 1,
+      "b": [
+       1,
+       2
+      ]
+     },
+     "expect": {
+      "ok": false
+     },
+     "got": {
+      "threw": "ZeroDivisionError: division by zero"
+     }
+    },
+    {
+     "id": "triple-044996",
+     "fam": "triple",
+     "rule": {
+      "<": [
+       "a",
+       null,
+       null
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": false
+     },
+     "got": {
+      "ok": true
+     }
+    },
+    {
+     "id": "triple-045004",
+     "fam": "triple",
+     "rule": {
+      "<": [
+       "a",
+       {
+        "and": []
+       },
+       null
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": false
+     },
+     "got": {
+      "ok": true
+     }
+    },
+    {
+     "id": "triple-045165",
+     "fam": "triple",
+     "rule": {
+      "<": [
+       {
+        "and": []
+       },
+       1,
+       {
+        "and": []
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": false
+     },
+     "got": {
+      "ok": true
+     }
+    },
+    {
+     "id": "numstr-051490",
+     "fam": "numstr",
+     "rule": {
+      "-": [
+       ""
+      ]
+     },
+     "data": {
+      "s": ""
+     },
+     "expect": {
+      "ok": 0
+     },
+     "got": {
+      "ok": null
+     }
+    },
+    {
+     "id": "numstr-051491",
+     "fam": "numstr",
+     "rule": {
+      "-": [
+       "",
+       0
+      ]
+     },
+     "data": {
+      "s": ""
+     },
+     "expect": {
+      "ok": 0
+     },
+     "got": {
+      "ok": null
+     }
+    },
+    {
+     "id": "numstr-051492",
+     "fam": "numstr",
+     "rule": {
+      "<": [
+       "",
+       1
+      ]
+     },
+     "data": {
+      "s": ""
+     },
+     "expect": {
+      "ok": true
+     },
+     "got": {
+      "ok": false
+     }
+    },
+    {
+     "id": "numfmt-055947",
+     "fam": "numfmt",
+     "rule": {
+      "/": [
+       3,
+       0
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": null
+     },
+     "got": {
+      "threw": "ZeroDivisionError: division by zero"
+     }
+    },
+    {
+     "id": "numfmt-056045",
+     "fam": "numfmt",
+     "rule": {
+      "cat": [
+       "n=",
+       1e-07
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": "n=1e-7"
+     },
+     "got": {
+      "ok": "n=1e-07"
+     }
+    },
+    {
+     "id": "numfmt-056052",
+     "fam": "numfmt",
+     "rule": {
+      "cat": [
+       "n=",
+       1e-06
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": "n=0.000001"
+     },
+     "got": {
+      "ok": "n=1e-06"
+     }
+    },
+    {
+     "id": "tie-056424",
+     "fam": "tie",
+     "rule": {
+      "cat": [
+       {
+        "/": [
+         18014398509481984,
+         100
+        ]
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": "180143985094819.84"
+     },
+     "got": {
+      "ok": "180143985094820"
+     }
+    },
+    {
+     "id": "tie-056426",
+     "fam": "tie",
+     "rule": {
+      "/": [
+       9007199254740993,
+       100
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": 90071992547409.92
+     },
+     "got": {
+      "ok": 90071992547409.94
+     }
+    },
+    {
+     "id": "tie-056429",
+     "fam": "tie",
+     "rule": {
+      "/": [
+       9007199254740993,
+       7
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": 1286742750677284.5
+     },
+     "got": {
+      "ok": 1286742750677284.8
+     }
+    },
+    {
+     "id": "signedzero-057047",
+     "fam": "signedzero",
+     "rule": {
+      ">": [
+       0,
+       {
+        "/": [
+         1,
+         {
+          "max": [
+           0,
+           0
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": false
+     },
+     "got": {
+      "threw": "ZeroDivisionError: division by zero"
+     }
+    },
+    {
+     "id": "signedzero-057048",
+     "fam": "signedzero",
+     "rule": {
+      "<": [
+       0,
+       {
+        "/": [
+         1,
+         {
+          "max": [
+           0,
+           0
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": true
+     },
+     "got": {
+      "threw": "ZeroDivisionError: division by zero"
+     }
+    },
+    {
+     "id": "signedzero-057050",
+     "fam": "signedzero",
+     "rule": {
+      "===": [
+       {
+        "/": [
+         1,
+         {
+          "max": [
+           0,
+           0
+          ]
+         }
+        ]
+       },
+       {
+        "/": [
+         -1,
+         0
+        ]
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": false
+     },
+     "got": {
+      "threw": "ZeroDivisionError: division by zero"
+     }
+    },
+    {
+     "id": "unicode-064169",
+     "fam": "unicode",
+     "rule": {
+      "substr": [
+       "",
+       -100,
+       {
+        "/": [
+         1,
+         0
+        ]
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": ""
+     },
+     "got": {
+      "threw": "ZeroDivisionError: division by zero"
+     }
+    },
+    {
+     "id": "unicode-064186",
+     "fam": "unicode",
+     "rule": {
+      "substr": [
+       "",
+       -3,
+       {
+        "/": [
+         1,
+         0
+        ]
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": ""
+     },
+     "got": {
+      "threw": "ZeroDivisionError: division by zero"
+     }
+    },
+    {
+     "id": "unicode-064204",
+     "fam": "unicode",
+     "rule": {
+      "substr": [
+       "",
+       -2,
+       {
+        "/": [
+         -1,
+         0
+        ]
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": ""
+     },
+     "got": {
+      "threw": "ZeroDivisionError: division by zero"
+     }
+    },
+    {
+     "id": "var-089269",
+     "fam": "var",
+     "rule": {
+      "missing_some": [
+       1,
+       [
+        [],
+        "a"
+       ]
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": []
+     },
+     "got": {
+      "ok": [
+       [],
+       "a"
+      ]
+     }
+    },
+    {
+     "id": "var-089279",
+     "fam": "var",
+     "rule": {
+      "missing_some": [
+       1,
+       [
+        [
+         0
+        ],
+        "a"
+       ]
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": []
+     },
+     "got": {
+      "ok": [
+       [
+        0.0
+       ],
+       "a"
+      ]
+     }
+    },
+    {
+     "id": "var-090172",
+     "fam": "var",
+     "rule": {
+      "missing_some": [
+       1,
+       [
+        [
+         "a"
+        ],
+        "a"
+       ]
+      ]
+     },
+     "data": [],
+     "expect": {
+      "ok": []
+     },
+     "got": {
+      "ok": [
+       [
+        "a"
+       ],
+       "a"
+      ]
+     }
+    },
+    {
+     "id": "collection-108428",
+     "fam": "collection",
+     "rule": {
+      "map": [
+       [
+        0,
+        0
+       ],
+       {
+        "+": [
+         {
+          "var": "current"
+         },
+         {
+          "var": "accumulator"
+         }
+        ]
+       }
+      ]
+     },
+     "data": {
+      "xs": [
+       1,
+       2,
+       3
+      ],
+      "o": {
+       "a": 1
+      },
+      "a": 9
+     },
+     "expect": {
+      "ok": [
+       null,
+       null
+      ]
+     },
+     "got": {
+      "ok": [
+       0.0,
+       0.0
+      ]
+     }
+    },
+    {
+     "id": "collection-108541",
+     "fam": "collection",
+     "rule": {
+      "map": [
+       [
+        1,
+        "1",
+        true,
+        null
+       ],
+       {
+        "cat": [
+         {
+          "var": "accumulator"
+         },
+         {
+          "var": "current"
+         }
+        ]
+       }
+      ]
+     },
+     "data": {
+      "xs": [
+       1,
+       2,
+       3
+      ],
+      "o": {
+       "a": 1
+      },
+      "a": 9
+     },
+     "expect": {
+      "ok": [
+       "",
+       "",
+       "",
+       ""
+      ]
+     },
+     "got": {
+      "ok": [
+       "nullnull",
+       "nullnull",
+       "nullnull",
+       "nullnull"
+      ]
+     }
+    },
+    {
+     "id": "collection-108549",
+     "fam": "collection",
+     "rule": {
+      "map": [
+       [
+        1,
+        "1",
+        true,
+        null
+       ],
+       {
+        "in": [
+         {
+          "var": ""
+         },
+         [
+          1,
+          2
+         ]
+        ]
+       }
+      ]
+     },
+     "data": {
+      "xs": [
+       1,
+       2,
+       3
+      ],
+      "o": {
+       "a": 1
+      },
+      "a": 9
+     },
+     "expect": {
+      "ok": [
+       true,
+       false,
+       false,
+       false
+      ]
+     },
+     "got": {
+      "ok": [
+       true,
+       false,
+       true,
+       false
+      ]
+     }
+    },
+    {
+     "id": "flow-120478",
+     "fam": "flow",
+     "rule": {
+      "cat": [
+       {
+        "if": [
+         false,
+         {
+          "nonexistent": []
+         }
+        ]
+       },
+       "x"
+      ]
+     },
+     "data": {
+      "a": 1
+     },
+     "expect": {
+      "ok": "x"
+     },
+     "got": {
+      "ok": "nullx"
+     }
+    },
+    {
+     "id": "flow-120482",
+     "fam": "flow",
+     "rule": {
+      "cat": [
+       {
+        "if": [
+         false,
+         1,
+         false,
+         2
+        ]
+       },
+       "x"
+      ]
+     },
+     "data": {
+      "a": 1
+     },
+     "expect": {
+      "ok": "x"
+     },
+     "got": {
+      "ok": "nullx"
+     }
+    },
+    {
+     "id": "flow-120496",
+     "fam": "flow",
+     "rule": {
+      "cat": [
+       {
+        "?:": [
+         0,
+         1
+        ]
+       },
+       "x"
+      ]
+     },
+     "data": {
+      "a": 1
+     },
+     "expect": {
+      "ok": "x"
+     },
+     "got": {
+      "ok": "nullx"
+     }
+    },
+    {
+     "id": "literal-120607",
+     "fam": "literal",
+     "rule": {
+      "cat": [
+       null
+      ]
+     },
+     "data": {
+      "a": 7
+     },
+     "expect": {
+      "ok": ""
+     },
+     "got": {
+      "ok": "null"
+     }
+    },
+    {
+     "id": "literal-120612",
+     "fam": "literal",
+     "rule": {
+      "cat": [
+       true
+      ]
+     },
+     "data": {
+      "a": 7
+     },
+     "expect": {
+      "ok": "true"
+     },
+     "got": {
+      "ok": "True"
+     }
+    },
+    {
+     "id": "literal-120613",
+     "fam": "literal",
+     "rule": {
+      "max": [
+       true
+      ]
+     },
+     "data": {
+      "a": 7
+     },
+     "expect": {
+      "ok": 1
+     },
+     "got": {
+      "ok": true
+     }
+    },
+    {
+     "id": "coercion-120711",
+     "fam": "coercion",
+     "rule": {
+      "/": [
+       null,
+       null
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": null
+     },
+     "got": {
+      "threw": "ZeroDivisionError: division by zero"
+     }
+    },
+    {
+     "id": "coercion-120721",
+     "fam": "coercion",
+     "rule": {
+      "!==": [
+       null,
+       {
+        "and": []
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": true
+     },
+     "got": {
+      "ok": false
+     }
+    },
+    {
+     "id": "coercion-120725",
+     "fam": "coercion",
+     "rule": {
+      ">=": [
+       null,
+       {
+        "and": []
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": false
+     },
+     "got": {
+      "ok": true
+     }
+    },
+    {
+     "id": "community-138981",
+     "fam": "community",
+     "rule": {
+      "reduce": [
+       {
+        "var": "integers"
+       },
+       {
+        "+": [
+         {
+          "var": "current"
+         },
+         {
+          "var": "accumulator"
+         }
+        ]
+       },
+       {
+        "var": "start_with"
+       }
+      ]
+     },
+     "data": {
+      "integers": [
+       1,
+       2,
+       3,
+       4
+      ],
+      "start_with": 59
+     },
+     "expect": {
+      "ok": 69
+     },
+     "got": {
+      "ok": null
+     }
+    },
+    {
+     "id": "community-139014",
+     "fam": "community",
+     "rule": {
+      "+": [
+       true,
+       false,
+       true
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": null
+     },
+     "got": {
+      "ok": 2.0
+     }
+    },
+    {
+     "id": "community-139025",
+     "fam": "community",
+     "rule": {
+      "+": true
+     },
+     "data": null,
+     "expect": {
+      "ok": null
+     },
+     "got": {
+      "ok": 1.0
+     }
+    }
+   ],
+   "throw_unexpected": 0
+  },
+  "community": {
+   "pass": 790,
+   "total": 1138
+  }
+ }
+}

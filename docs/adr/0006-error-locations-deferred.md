@@ -1,4 +1,4 @@
-# 0006. Error constructors carry no location yet
+# 0006. Error constructors carry no location yet (resolved: locations shipped)
 
 **Status: closed (2026-10-22).** Locations are implemented, before the first
 release, so the stable error API never existed without them.

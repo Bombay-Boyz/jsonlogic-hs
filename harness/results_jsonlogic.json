@@ -1,0 +1,1202 @@
+{
+ "jsonlogic 0.5.1 (crate)": {
+  "classic": {
+   "pass": 270,
+   "total": 278
+  },
+  "outliers": {
+   "pass": 22881,
+   "total": 26980,
+   "fam": {
+    "arity": {
+     "pass": 567,
+     "total": 630
+    },
+    "unary": {
+     "pass": 1785,
+     "total": 2012
+    },
+    "pair": {
+     "pass": 4363,
+     "total": 5015
+    },
+    "triple": {
+     "pass": 986,
+     "total": 1120
+    },
+    "numstr": {
+     "pass": 1903,
+     "total": 2376
+    },
+    "numfmt": {
+     "pass": 405,
+     "total": 473
+    },
+    "tie": {
+     "pass": 621,
+     "total": 628
+    },
+    "signedzero": {
+     "pass": 1356,
+     "total": 2326
+    },
+    "unicode": {
+     "pass": 3558,
+     "total": 4064
+    },
+    "var": {
+     "pass": 2992,
+     "total": 3262
+    },
+    "collection": {
+     "pass": 1301,
+     "total": 1486
+    },
+    "flow": {
+     "pass": 151,
+     "total": 291
+    },
+    "literal": {
+     "pass": 47,
+     "total": 75
+    },
+    "deep": {
+     "pass": 34,
+     "total": 34
+    },
+    "wide": {
+     "pass": 36,
+     "total": 36
+    },
+    "coercion": {
+     "pass": 1895,
+     "total": 2239
+    },
+    "community": {
+     "pass": 881,
+     "total": 913
+    }
+   },
+   "fails": [
+    {
+     "id": "arity-000021",
+     "fam": "arity",
+     "rule": {
+      "missing": [
+       1,
+       "a",
+       [
+        1,
+        2
+       ]
+      ]
+     },
+     "data": {
+      "a": 5
+     },
+     "expect": {
+      "ok": [
+       1
+      ]
+     },
+     "got": {
+      "status": "ok",
+      "value": [
+       1,
+       [
+        1,
+        2
+       ]
+      ]
+     }
+    },
+    {
+     "id": "arity-000024",
+     "fam": "arity",
+     "rule": {
+      "missing": [
+       1,
+       "a",
+       [
+        1,
+        2
+       ],
+       null
+      ]
+     },
+     "data": {
+      "a": 5
+     },
+     "expect": {
+      "ok": [
+       1
+      ]
+     },
+     "got": {
+      "status": "ok",
+      "value": [
+       1,
+       [
+        1,
+        2
+       ],
+       null
+      ]
+     }
+    },
+    {
+     "id": "arity-000027",
+     "fam": "arity",
+     "rule": {
+      "missing_some": []
+     },
+     "data": {
+      "a": 5
+     },
+     "expect": {
+      "error": "Cannot read properties of undefined (reading 'length')"
+     },
+     "got": {
+      "status": "ok",
+      "value": []
+     }
+    },
+    {
+     "id": "unary-000651",
+     "fam": "unary",
+     "rule": {
+      "var": [
+       Infinity
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": null
+     },
+     "got": {
+      "status": "unparsable",
+      "value": ""
+     }
+    },
+    {
+     "id": "unary-000767",
+     "fam": "unary",
+     "rule": {
+      "missing": [
+       -Infinity
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": [
+       null
+      ]
+     },
+     "got": {
+      "status": "unparsable",
+      "value": ""
+     }
+    },
+    {
+     "id": "unary-000793",
+     "fam": "unary",
+     "rule": {
+      "missing": [
+       1.7976931348623157e+308
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": [
+       1.7976931348623157e+308
+      ]
+     },
+     "got": {
+      "status": "unparsable",
+      "value": ""
+     }
+    },
+    {
+     "id": "pair-005029",
+     "fam": "pair",
+     "rule": {
+      "==": [
+       {
+        "/": [
+         1,
+         0
+        ]
+       },
+       null
+      ]
+     },
+     "data": {
+      "a": 1,
+      "b": [
+       1,
+       2
+      ]
+     },
+     "expect": {
+      "ok": false
+     },
+     "got": {
+      "status": "ok",
+      "value": true
+     }
+    },
+    {
+     "id": "pair-005064",
+     "fam": "pair",
+     "rule": {
+      "==": [
+       {
+        "/": [
+         -1,
+         0
+        ]
+       },
+       {
+        "+": [
+         "a"
+        ]
+       }
+      ]
+     },
+     "data": {
+      "a": 1,
+      "b": [
+       1,
+       2
+      ]
+     },
+     "expect": {
+      "ok": false
+     },
+     "got": {
+      "status": "ok",
+      "value": true
+     }
+    },
+    {
+     "id": "pair-005242",
+     "fam": "pair",
+     "rule": {
+      "==": [
+       {
+        "and": []
+       },
+       {
+        "/": [
+         1,
+         0
+        ]
+       }
+      ]
+     },
+     "data": {
+      "a": 1,
+      "b": [
+       1,
+       2
+      ]
+     },
+     "expect": {
+      "ok": false
+     },
+     "got": {
+      "status": "ok",
+      "value": true
+     }
+    },
+    {
+     "id": "triple-045357",
+     "fam": "triple",
+     "rule": {
+      "<=": [
+       0,
+       1,
+       {
+        "and": []
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": true
+     },
+     "got": {
+      "status": "ok",
+      "value": false
+     }
+    },
+    {
+     "id": "triple-045573",
+     "fam": "triple",
+     "rule": {
+      "<=": [
+       "",
+       null,
+       {
+        "and": []
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": true
+     },
+     "got": {
+      "status": "ok",
+      "value": false
+     }
+    },
+    {
+     "id": "triple-045601",
+     "fam": "triple",
+     "rule": {
+      "<=": [
+       null,
+       0,
+       1
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": true
+     },
+     "got": {
+      "status": "ok",
+      "value": false
+     }
+    },
+    {
+     "id": "numstr-051498",
+     "fam": "numstr",
+     "rule": {
+      "cat": [
+       {
+        "+": [
+         ""
+        ]
+       }
+      ]
+     },
+     "data": {
+      "s": ""
+     },
+     "expect": {
+      "ok": "NaN"
+     },
+     "got": {
+      "status": "ok",
+      "value": "null"
+     }
+    },
+    {
+     "id": "numstr-051513",
+     "fam": "numstr",
+     "rule": {
+      "cat": [
+       {
+        "+": [
+         " "
+        ]
+       }
+      ]
+     },
+     "data": {
+      "s": " "
+     },
+     "expect": {
+      "ok": "NaN"
+     },
+     "got": {
+      "status": "ok",
+      "value": "null"
+     }
+    },
+    {
+     "id": "numstr-051528",
+     "fam": "numstr",
+     "rule": {
+      "cat": [
+       {
+        "+": [
+         "0"
+        ]
+       }
+      ]
+     },
+     "data": {
+      "s": "0"
+     },
+     "expect": {
+      "ok": "0"
+     },
+     "got": {
+      "status": "ok",
+      "value": "0.0"
+     }
+    },
+    {
+     "id": "numfmt-056052",
+     "fam": "numfmt",
+     "rule": {
+      "cat": [
+       "n=",
+       1e-06
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": "n=0.000001"
+     },
+     "got": {
+      "status": "ok",
+      "value": "n=1e-6"
+     }
+    },
+    {
+     "id": "numfmt-056054",
+     "fam": "numfmt",
+     "rule": {
+      "*": [
+       123456789012345680000,
+       1
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": 123456789012345680000
+     },
+     "got": {
+      "status": "ok",
+      "value": 1.2345678901234567e+20
+     }
+    },
+    {
+     "id": "numfmt-056055",
+     "fam": "numfmt",
+     "rule": {
+      "-": [
+       123456789012345680000,
+       0
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": 123456789012345680000
+     },
+     "got": {
+      "status": "ok",
+      "value": 1.2345678901234567e+20
+     }
+    },
+    {
+     "id": "tie-056472",
+     "fam": "tie",
+     "rule": {
+      "cat": [
+       {
+        "/": [
+         18014398509481999,
+         100
+        ]
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": "180143985094820"
+     },
+     "got": {
+      "status": "ok",
+      "value": "180143985094820.0"
+     }
+    },
+    {
+     "id": "tie-056482",
+     "fam": "tie",
+     "rule": {
+      "cat": [
+       {
+        "/": [
+         18014398509482002,
+         100
+        ]
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": "180143985094820"
+     },
+     "got": {
+      "status": "ok",
+      "value": "180143985094820.0"
+     }
+    },
+    {
+     "id": "tie-056812",
+     "fam": "tie",
+     "rule": {
+      "cat": [
+       {
+        "/": [
+         18014398509482101,
+         100
+        ]
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": "180143985094821"
+     },
+     "got": {
+      "status": "ok",
+      "value": "180143985094821.0"
+     }
+    },
+    {
+     "id": "signedzero-057047",
+     "fam": "signedzero",
+     "rule": {
+      ">": [
+       0,
+       {
+        "/": [
+         1,
+         {
+          "max": [
+           0,
+           0
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": false
+     },
+     "got": {
+      "status": "ok",
+      "value": true
+     }
+    },
+    {
+     "id": "signedzero-057048",
+     "fam": "signedzero",
+     "rule": {
+      "<": [
+       0,
+       {
+        "/": [
+         1,
+         {
+          "max": [
+           0,
+           0
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": true
+     },
+     "got": {
+      "status": "ok",
+      "value": false
+     }
+    },
+    {
+     "id": "signedzero-057050",
+     "fam": "signedzero",
+     "rule": {
+      "===": [
+       {
+        "/": [
+         1,
+         {
+          "max": [
+           0,
+           0
+          ]
+         }
+        ]
+       },
+       {
+        "/": [
+         -1,
+         0
+        ]
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": false
+     },
+     "got": {
+      "status": "ok",
+      "value": true
+     }
+    },
+    {
+     "id": "unicode-064448",
+     "fam": "unicode",
+     "rule": {
+      "var": "s.length"
+     },
+     "data": {
+      "s": "a"
+     },
+     "expect": {
+      "ok": 1
+     },
+     "got": {
+      "status": "ok",
+      "value": null
+     }
+    },
+    {
+     "id": "unicode-064510",
+     "fam": "unicode",
+     "rule": {
+      "substr": [
+       "a",
+       -2,
+       {
+        "/": [
+         1,
+         0
+        ]
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": "a"
+     },
+     "got": {
+      "status": "ok",
+      "value": ""
+     }
+    },
+    {
+     "id": "unicode-064640",
+     "fam": "unicode",
+     "rule": {
+      "substr": [
+       "a",
+       0.5,
+       {
+        "/": [
+         1,
+         0
+        ]
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": "a"
+     },
+     "got": {
+      "status": "ok",
+      "value": ""
+     }
+    },
+    {
+     "id": "var-089269",
+     "fam": "var",
+     "rule": {
+      "missing_some": [
+       1,
+       [
+        [],
+        "a"
+       ]
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": []
+     },
+     "got": {
+      "status": "ok",
+      "value": [
+       [],
+       "a"
+      ]
+     }
+    },
+    {
+     "id": "var-089279",
+     "fam": "var",
+     "rule": {
+      "missing_some": [
+       1,
+       [
+        [
+         0
+        ],
+        "a"
+       ]
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": []
+     },
+     "got": {
+      "status": "ok",
+      "value": [
+       [
+        0
+       ],
+       "a"
+      ]
+     }
+    },
+    {
+     "id": "var-089309",
+     "fam": "var",
+     "rule": {
+      "missing": [
+       ""
+      ]
+     },
+     "data": {},
+     "expect": {
+      "ok": []
+     },
+     "got": {
+      "status": "ok",
+      "value": [
+       ""
+      ]
+     }
+    },
+    {
+     "id": "collection-108498",
+     "fam": "collection",
+     "rule": {
+      "map": [
+       [
+        [
+         1
+        ],
+        [
+         2
+        ]
+       ],
+       {
+        "var": "length"
+       }
+      ]
+     },
+     "data": {
+      "xs": [
+       1,
+       2,
+       3
+      ],
+      "o": {
+       "a": 1
+      },
+      "a": 9
+     },
+     "expect": {
+      "ok": [
+       1,
+       1
+      ]
+     },
+     "got": {
+      "status": "ok",
+      "value": [
+       null,
+       null
+      ]
+     }
+    },
+    {
+     "id": "collection-108526",
+     "fam": "collection",
+     "rule": {
+      "map": [
+       [
+        "a",
+        "b"
+       ],
+       {
+        "var": "length"
+       }
+      ]
+     },
+     "data": {
+      "xs": [
+       1,
+       2,
+       3
+      ],
+      "o": {
+       "a": 1
+      },
+      "a": 9
+     },
+     "expect": {
+      "ok": [
+       1,
+       1
+      ]
+     },
+     "got": {
+      "status": "ok",
+      "value": [
+       null,
+       null
+      ]
+     }
+    },
+    {
+     "id": "collection-108541",
+     "fam": "collection",
+     "rule": {
+      "map": [
+       [
+        1,
+        "1",
+        true,
+        null
+       ],
+       {
+        "cat": [
+         {
+          "var": "accumulator"
+         },
+         {
+          "var": "current"
+         }
+        ]
+       }
+      ]
+     },
+     "data": {
+      "xs": [
+       1,
+       2,
+       3
+      ],
+      "o": {
+       "a": 1
+      },
+      "a": 9
+     },
+     "expect": {
+      "ok": [
+       "",
+       "",
+       "",
+       ""
+      ]
+     },
+     "got": {
+      "status": "ok",
+      "value": [
+       "nullnull",
+       "nullnull",
+       "nullnull",
+       "nullnull"
+      ]
+     }
+    },
+    {
+     "id": "flow-120318",
+     "fam": "flow",
+     "rule": {
+      "if": [
+       true,
+       1,
+       {
+        "nonexistent": []
+       }
+      ]
+     },
+     "data": {
+      "a": 1
+     },
+     "expect": {
+      "ok": 1
+     },
+     "got": {
+      "status": "error",
+      "value": "Unrecognized operation nonexistent"
+     }
+    },
+    {
+     "id": "flow-120319",
+     "fam": "flow",
+     "rule": {
+      "if": [
+       false,
+       {
+        "nonexistent": []
+       },
+       2
+      ]
+     },
+     "data": {
+      "a": 1
+     },
+     "expect": {
+      "ok": 2
+     },
+     "got": {
+      "status": "error",
+      "value": "Unrecognized operation nonexistent"
+     }
+    },
+    {
+     "id": "flow-120320",
+     "fam": "flow",
+     "rule": {
+      "if": [
+       false,
+       {
+        "nonexistent": []
+       }
+      ]
+     },
+     "data": {
+      "a": 1
+     },
+     "expect": {
+      "ok": null
+     },
+     "got": {
+      "status": "error",
+      "value": "Unrecognized operation nonexistent"
+     }
+    },
+    {
+     "id": "literal-120565",
+     "fam": "literal",
+     "rule": [
+      {
+       "var": "a"
+      }
+     ],
+     "data": {
+      "a": 7
+     },
+     "expect": {
+      "ok": [
+       7
+      ]
+     },
+     "got": {
+      "status": "ok",
+      "value": [
+       {
+        "var": "a"
+       }
+      ]
+     }
+    },
+    {
+     "id": "literal-120566",
+     "fam": "literal",
+     "rule": {
+      "merge": [
+       [
+        {
+         "var": "a"
+        }
+       ]
+      ]
+     },
+     "data": {
+      "a": 7
+     },
+     "expect": {
+      "ok": [
+       7
+      ]
+     },
+     "got": {
+      "status": "ok",
+      "value": [
+       {
+        "var": "a"
+       }
+      ]
+     }
+    },
+    {
+     "id": "literal-120567",
+     "fam": "literal",
+     "rule": {
+      "cat": [
+       [
+        {
+         "var": "a"
+        }
+       ]
+      ]
+     },
+     "data": {
+      "a": 7
+     },
+     "expect": {
+      "ok": "7"
+     },
+     "got": {
+      "status": "ok",
+      "value": "[object Object]"
+     }
+    },
+    {
+     "id": "coercion-120721",
+     "fam": "coercion",
+     "rule": {
+      "!==": [
+       null,
+       {
+        "and": []
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": true
+     },
+     "got": {
+      "status": "ok",
+      "value": false
+     }
+    },
+    {
+     "id": "coercion-120725",
+     "fam": "coercion",
+     "rule": {
+      ">=": [
+       null,
+       {
+        "and": []
+       }
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": false
+     },
+     "got": {
+      "status": "ok",
+      "value": true
+     }
+    },
+    {
+     "id": "coercion-120750",
+     "fam": "coercion",
+     "rule": {
+      "cat": [
+       null,
+       true
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": "true"
+     },
+     "got": {
+      "status": "ok",
+      "value": "nulltrue"
+     }
+    },
+    {
+     "id": "community-138831",
+     "fam": "community",
+     "rule": {
+      "?:": [
+       true,
+       1,
+       2
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": 1
+     },
+     "got": {
+      "status": "error",
+      "value": "Unrecognized operation ?:"
+     }
+    },
+    {
+     "id": "community-138832",
+     "fam": "community",
+     "rule": {
+      "?:": [
+       false,
+       1,
+       2
+      ]
+     },
+     "data": null,
+     "expect": {
+      "ok": 2
+     },
+     "got": {
+      "status": "error",
+      "value": "Unrecognized operation ?:"
+     }
+    },
+    {
+     "id": "community-138922",
+     "fam": "community",
+     "rule": [
+      1,
+      {
+       "var": "x"
+      },
+      3
+     ],
+     "data": {
+      "x": 2
+     },
+     "expect": {
+      "ok": [
+       1,
+       2,
+       3
+      ]
+     },
+     "got": {
+      "status": "ok",
+      "value": [
+       1,
+       {
+        "var": "x"
+       },
+       3
+      ]
+     }
+    }
+   ],
+   "unparsable": 73,
+   "panics": 108
+  },
+  "community": {
+   "pass": 761,
+   "total": 1138
+  }
+ }
+}

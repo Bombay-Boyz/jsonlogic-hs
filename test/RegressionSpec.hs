@@ -20,7 +20,7 @@ import Test.Hspec
 import Test.QuickCheck
 
 import Gen (genData, genRule, genText)
-import JsonLogic
+import JsonLogic hiding (force)
 import JsonLogic.Core.Number (scientificToDouble)
 import JsonLogic.Core.Utf16 (compareUtf16, utf16CharAt, utf16Slice)
 import Oracle (charAtOracle, sliceOracle, utf16Units)
@@ -41,9 +41,9 @@ withinSeconds seconds result = do
 -- | A registry of custom operators. The names used here are all valid; if
 -- one were not, the registry is empty and the test that uses it fails on an
 -- unknown operator.
-registry :: [(Text, Value -> [Value] -> Either Text Value)] -> Operators
+registry :: [(Text, Value -> [Value] -> Either CustomError Value)] -> Operators
 registry entries =
-  fromRight noOperators (operatorsFromList [(OperatorName name, implementation) | (name, implementation) <- entries])
+  fromRight noOperators (operatorsFromList [(OperatorName name, pureOperator (AtLeast 0) implementation) | (name, implementation) <- entries])
 
 -- | Compile a rule and hand it to the test, which fails if it does not compile.
 -- | What a custom operator throws in the tests below.
@@ -87,9 +87,9 @@ spec = describe "regressions" $ do
       rules
     it "gives the answer a large finite limit gives, for any rule" $
       forAll (genRule 5) $ \rule -> forAll (genData 3) $ \dat' ->
-        let unlimited = applyWithConfig defaultConfig{maxSteps = maxBound, arityMode = Lenient} noOperators rule dat'
+        let withoutLimit = applyWithConfig defaultConfig{maxSteps = maxBound, arityMode = Lenient} noOperators rule dat'
             large = applyWithConfig defaultConfig{maxSteps = 100000000, arityMode = Lenient} noOperators rule dat'
-         in unlimited === large
+         in withoutLimit === large
     it "holds for the other limits too" $ do
       let config = defaultConfig{maxStringLength = maxBound, maxArrayLength = maxBound, maxDepth = maxBound, maxNodes = maxBound}
       problem (applyWithConfig config noOperators (call "cat" ["a", "b"]) Null) `shouldBe` Right (String "ab")
@@ -180,12 +180,13 @@ spec = describe "regressions" $ do
       withRule operators (call "boom" []) $ \ready -> do
         r <- tryRun ready Null
         case r of
-          Left e -> fromException e `shouldBe` Just Boom
+          Left (OperatorThrew e) -> fromException e `shouldBe` Just Boom
+          Left other -> expectationFailure ("unexpected failure: " <> show other)
           Right _ -> expectationFailure "the exception escaped tryRun's result"
     it "tryRun returns an ordinary answer unchanged" $ do
       withRule noOperators (call "+" [Number 1, Number 2]) $ \ready -> do
         r <- tryRun ready Null
-        either (const Nothing) Just r `shouldBe` Just (Right (Number 3))
+        either (const Nothing) Just r `shouldBe` Just (Number 3)
     it "an Error can be thrown and caught" $ do
       withFailure (apply (call "nope" []) Null) $ \e -> do
         r <- try (throwIO e) :: IO (Either Error ())
