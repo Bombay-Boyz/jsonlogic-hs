@@ -99,7 +99,7 @@ spec = describe "resource limits" $ do
         `shouldBe` Left (ParseProblem (DepthExceeded 5))
     it "holds a custom operator's result to the same depth" $ do
       let deep n = foldr (\_ inner -> toJSON [inner]) (toJSON (0 :: Int)) [1 .. n :: Int]
-          ops = either (error . show) id (operatorsFromList [(OperatorName "deep", \_ _ -> Right (deep 10))])
+          ops = either (error . show) id (operatorsFromList [(OperatorName "deep", pureOperator (AtLeast 0) (\_ _ -> Right (deep 10)))])
           call limit = problem (applyWithConfig defaultConfig{maxDepth = limit} ops (object ["deep" .= ([] :: [Int])]) Null)
       call 10 `shouldSatisfy` isRight'
       call 9 `shouldBe` Left (EvalProblem (LimitExceeded (ValueDepthLimit 9)))

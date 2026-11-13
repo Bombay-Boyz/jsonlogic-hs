@@ -10,9 +10,9 @@ import qualified Data.Text as Text
 import Test.Hspec
 import Test.QuickCheck (Gen, choose, forAll, listOf, oneof)
 
-import JsonLogic hiding (Rule)
+import JsonLogic
 import JsonLogic.Core.Location (root)
-import JsonLogic.Core.Rule (Node (..), Rule, RuleF (..))
+import JsonLogic.Core.Rule (Node (..), RuleF (..), RuleTree)
 import Oracle (evaluate)
 import Support (Problem (..), at, problem)
 
@@ -21,10 +21,19 @@ q :: LBS.ByteString -> LBS.ByteString
 q = LBS.map (\byte -> if byte == 39 then 34 else byte)
 
 -- | @evaluates rule input expected@
+-- | The reference's own reading of a rule: lenient arity, and an operator
+-- nobody supplied fails only if it is reached.
+reference :: Config
+reference = defaultConfig {arityMode = Lenient}
+
+-- | Strict arity, but an unknown operator fails only when reached.
+lazyUnknown :: Config
+lazyUnknown = defaultConfig {unknownOperators = FailWhenReached}
+
 evaluates :: LBS.ByteString -> LBS.ByteString -> LBS.ByteString -> Expectation
 evaluates rule input expected =
   case (decode (q rule), decode (q input), decode (q expected)) of
-    (Just r, Just i, Just e) -> apply r i `shouldBe` Right e
+    (Just r, Just i, Just e) -> applyWithConfig reference noOperators r i `shouldBe` Right e
     _ -> expectationFailure "test case contains invalid JSON"
 
 -- | (rule, data, expected result). Every one of these is behaviour of the
@@ -162,7 +171,7 @@ nested :: Int -> Value
 nested n = foldr (\_ inner -> object ["!" .= inner]) (Number 0) [1 .. n]
 
 doubling :: Operators
-doubling = either (error . show) id (operatorsFromList [(OperatorName "double", implementation)])
+doubling = either (error . show) id (operatorsFromList [(OperatorName "double", pureOperator (Exactly 1) implementation)])
   where
     implementation _ [Number n] = Right (Number (n * 2))
     implementation _ _ = Left "expected one number"
@@ -183,13 +192,13 @@ genJson = oneof [scalar, toJSON <$> listOf scalar]
         ]
 
 -- | A node built by hand, at the root (the laws do not look at locations).
-node :: RuleF Rule -> Rule
+node :: RuleF RuleTree -> RuleTree
 node = Fix . Node root
 
-lit :: Value -> Rule
+lit :: Value -> RuleTree
 lit = node . Lit
 
-result :: Rule -> Either EvalError Value
+result :: RuleTree -> Either EvalError Value
 result rule = either (Left . snd) Right (evaluate rule Null)
 
 spec :: Spec
@@ -200,13 +209,13 @@ spec = describe "evaluation" $ do
   describe "errors" $ do
     it "reports an unknown operator, where it is" $
       withJson "{'nope':[1]}" $ \rule ->
-        apply rule Null `shouldBe` Left (EvalFailure root (UnknownOperator (OperatorName "nope")))
+        applyWithConfig lazyUnknown noOperators rule Null `shouldBe` Left (EvalFailure root (UnknownOperator (OperatorName "nope")))
     it "evaluates arguments before the operator, so a bad one still fails" $
       withJson "{'+':[1,{'nope':[]}]}" $ \rule ->
-        apply rule Null `shouldBe` Left (EvalFailure (at [Left "+", Right 1]) (UnknownOperator (OperatorName "nope")))
+        applyWithConfig lazyUnknown noOperators rule Null `shouldBe` Left (EvalFailure (at [Left "+", Right 1]) (UnknownOperator (OperatorName "nope")))
     it "locates a failure inside an iteration body" $
       withJson "{'map':[[1],{'nope':[]}]}" $ \rule ->
-        apply rule Null `shouldBe` Left (EvalFailure (at [Left "map", Right 1]) (UnknownOperator (OperatorName "nope")))
+        applyWithConfig lazyUnknown noOperators rule Null `shouldBe` Left (EvalFailure (at [Left "map", Right 1]) (UnknownOperator (OperatorName "nope")))
     it "surfaces parse errors, with their location" $
       withJson "{'!':{'==':[1]}}" $ \rule ->
         apply rule Null

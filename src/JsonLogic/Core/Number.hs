@@ -17,6 +17,7 @@ module JsonLogic.Core.Number
   ( -- * Reading
     decimalToDouble
   , scientificToDouble
+  , printsAsSource
   , stringToNumber
   , parseFloatString
   , isJsSpace
@@ -69,6 +70,16 @@ powerOfTen n = 10 ^ n
 -- | A JSON number as the double JavaScript's @JSON.parse@ would make of it.
 scientificToDouble :: Scientific -> Double
 scientificToDouble s = decimalToDouble (coefficient s) (toInteger (base10Exponent s))
+
+-- | Whether a JSON number survives the round trip through a double: the
+-- double it reads as prints (shortest digits, as JavaScript prints it) as
+-- the same decimal. False for an integer above 2^53 that is not exactly a
+-- shortest-digit decimal, and for any decimal with more digits than a double
+-- distinguishes.
+printsAsSource :: Scientific -> Bool
+printsAsSource n = not (isInfinite d) && doubleToScientific d == n
+  where
+    d = scientificToDouble n
 
 -- | @mantissa * 10 ^ exponent10@ as the nearest double (ties to even).
 --

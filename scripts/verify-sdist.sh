@@ -21,7 +21,7 @@ echo "--- contents ---"
 echo "$LISTING"
 
 echo "--- required files ---"
-for f in LICENSE README.md CHANGELOG.md jsonlogic-hs.cabal src/JsonLogic.hs test/tests.json test/outliers.jsonl test/community/index.json test/community/expected.json test/community/LICENSE; do
+for f in LICENSE README.md CHANGELOG.md jsonlogic-hs.cabal api/JsonLogic.hs test/tests.json test/outliers.jsonl test/community/index.json test/community/expected.json test/community/LICENSE; do
   if grep -q "/$f\$" <<< "$LISTING"; then
     echo "present: $f"
   else

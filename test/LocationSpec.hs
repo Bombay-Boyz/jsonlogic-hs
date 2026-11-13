@@ -41,7 +41,7 @@ operatorOf e = case e of
   ParseFailure _ (ArityMismatch name _ _) -> Just name
   EvalFailure _ (UnknownOperator name) -> Just name
   EvalFailure _ (CustomOperatorFailed name _) -> Just name
-  EvalFailure _ (InvalidOperand name) -> Just name
+  EvalFailure _ (InvalidOperand name _) -> Just name
   _ -> Nothing
 
 modes :: [Config]
@@ -60,10 +60,10 @@ spec = describe "error locations" $ do
         Left e | Just name <- operatorOf e -> counterexample (show e) (operatorAt (errorLocation e) rule === Just name)
         _ -> property True
   it "follow bare operands, which have no index" $
-    apply (json "{\"!\":{\"!\":{\"nope\":1}}}") Null
+    applyWithConfig defaultConfig {unknownOperators = FailWhenReached} noOperators (json "{\"!\":{\"!\":{\"nope\":1}}}") Null
       `shouldBe` Left (EvalFailure (at [Left "!", Left "!"]) (UnknownOperator (OperatorName "nope")))
   it "point into literals' own arrays" $
-    apply (json "{\"merge\":[[{\"nope\":[]}]]}") Null
+    applyWithConfig defaultConfig {unknownOperators = FailWhenReached} noOperators (json "{\"merge\":[[{\"nope\":[]}]]}") Null
       `shouldBe` Left (EvalFailure (at [Left "merge", Right 0, Right 0]) (UnknownOperator (OperatorName "nope")))
   it "put an operand the rule leaves out at the operator call, which exists" $
     -- five steps: the and, its true, the ==, its 1, and the undefined that

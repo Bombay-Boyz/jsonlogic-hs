@@ -30,7 +30,8 @@ import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as Text
 
-import JsonLogic.Core.Rule (Node (..), Rule, RuleF (..))
+import JsonLogic.Core.Parse (buildBuiltin)
+import JsonLogic.Core.Rule (Node (..), RuleF (..), RuleTree)
 import JsonLogic.Core.Value (fromValue, toJsString)
 
 -- | What a rule can read from its data.
@@ -72,7 +73,7 @@ data Shape
     Computed
 
 -- | What a rule can read from its data.
-dataUse :: Rule -> DataUse
+dataUse :: RuleTree -> DataUse
 dataUse rule = case layerReads (foldFix layer rule) of
   Reads paths whole -> DataUse (Set.toAscList paths) whole
 
@@ -98,6 +99,11 @@ readsOf node = case node of
   None collection _ -> layerReads collection
   Some collection _ -> layerReads collection
   Reduce collection _ initial -> layerReads collection <> layerReads initial
+  -- a builtin given surplus operands (lenient mode) reads what the same call
+  -- without them reads, and the surplus operands are evaluated as well
+  Applied builtin used extras -> case buildBuiltin builtin used of
+    Just inner -> readsOf inner <> foldMap layerReads extras
+    Nothing -> operands <> everything
   -- a custom operator is handed the whole datum
   CustomOp _ _ -> operands <> everything
   _ -> operands
