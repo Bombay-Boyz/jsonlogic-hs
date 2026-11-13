@@ -45,8 +45,8 @@ Each item is pinned by a test in `test/AuditSpec.hs`.
   need. `compile`/`apply` agree on every rule, including refused ones.
 * `applyBytes` (JSON text in and out), and a `jsonlogic` command
   (`eval`, `check`, `uses`).
-* **API surface**: only `JsonLogic` is exposed (the rest is a private internal
-  library); `Config`'s constructor is hidden (use record update on
+* **API surface**: `JsonLogic` is the one documented module (the `Core` modules
+  are hidden from Haddock and unsupported); `Config`'s constructor is hidden (use record update on
   `defaultConfig`); `JsonLogic.Core.Rule.Rule` is now `RuleTree`; the
   `Semigroup`/`Monoid` instances of `Operators` are gone (they shadowed
   silently).

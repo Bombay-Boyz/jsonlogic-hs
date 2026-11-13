@@ -20,7 +20,7 @@
 -- >   Right compiled -> map (run compiled) inputs
 --
 -- Every 'Error' carries the 'Location' in the rule where it happened, as a
--- JSON Pointer, and has a 'ToJSON' instance for responses to programs.
+-- JSON Pointer, and has a @ToJSON@ instance for responses to programs.
 -- 'validate' reports every problem in a rule, not only the first.
 --
 -- This module is the whole supported API. The @JsonLogic.Core.*@ modules
@@ -169,7 +169,7 @@ import JsonLogic.Core.Value (firstLossyNumber, nestsDeeperThan)
 -- compiled with, and nothing of the JSON it was read from.
 data Rule = Rule !DataUse ![(Location, OperatorName)] !Program
 
--- | A 'Rule' is compiled completely when it is built, so there is nothing
+-- | A @Rule@ is compiled completely when it is built, so there is nothing
 -- left to evaluate.
 instance NFData Rule where
   rnf (Rule use unknown program) = rnf use `seq` rnf unknown `seq` program `seq` ()
@@ -282,7 +282,7 @@ applyWith = applyWithConfig defaultConfig
 
 -- | Apply a rule to some data with an explicit 'Config' and extra
 -- operators. Equal to 'compile' then 'run', without the data-use analysis
--- that only a kept 'Rule' needs.
+-- that only a kept @Rule@ needs.
 applyWithConfig :: Config -> Operators -> Value -> Value -> Either Error Value
 applyWithConfig config operators rule input = do
   tree <- first (uncurry ParseFailure) (parseRuleChecked config (Just operators) rule)

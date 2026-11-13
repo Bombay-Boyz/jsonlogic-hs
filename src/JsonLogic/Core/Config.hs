@@ -1,3 +1,4 @@
+{-# OPTIONS_HADDOCK hide #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 -- |
@@ -10,7 +11,7 @@
 -- There is no global state. A @Config@ is an ordinary value passed to
 -- 'JsonLogic.compile' or 'JsonLogic.applyWithConfig'.
 --
--- The 'Config' constructor is not exported: build one from 'defaultConfig'
+-- The @Config@ constructor is not exported: build one from 'defaultConfig'
 -- with record update (@defaultConfig {maxSteps = 10000}@), so that adding a
 -- field is never a breaking change. 'validateConfig' (called by every entry
 -- point) refuses a configuration that cannot mean anything, such as a
@@ -129,7 +130,7 @@ data Config = Config
   }
   deriving (Eq, Show)
 
--- | Why a 'Config' was refused.
+-- | Why a @Config@ was refused.
 newtype ConfigError
   = -- | The named field holds a negative limit.
     NegativeLimit Text

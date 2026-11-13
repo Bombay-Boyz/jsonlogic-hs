@@ -1,3 +1,4 @@
+{-# OPTIONS_HADDOCK hide #-}
 {-# LANGUAGE BangPatterns #-}
 
 -- |
@@ -20,7 +21,7 @@
 -- such a slice with U+FFFD for the severed half (what
 -- @String.prototype.toWellFormed()@ makes of the reference's answer). The
 -- evaluator does not use them for that: it uses 'utf16SliceExact', which
--- answers a 'Units' value when the slice is not well formed, so that the
+-- answers a @Units@ value when the slice is not well formed, so that the
 -- halves keep their identity: they compare unequal, and joining them again
 -- gives the original character, as in JavaScript.
 module JsonLogic.Core.Utf16

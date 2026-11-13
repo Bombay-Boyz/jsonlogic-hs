@@ -9,9 +9,9 @@ jsonlogic-hs follows the [Haskell Package Versioning Policy](https://pvp.haskell
   never on `renderError` text, whose wording may change in any release. The
   rendered form of a `Location` (`renderLocation`) is RFC 6901 and will not
   change.
-- **Nothing else is exposed.** The rest of the library lives in a private
-  internal library that only this package's test suites can import, so it can
-  change in any release without being a breaking change.
+- **`JsonLogic.Core.*`** is exposed so that the test suites can reach it, and
+  hidden from the documentation. It carries **no stability promise**, and may
+  change in any release without a version bump: import `JsonLogic` only.
 - Behaviour pinned by the classic suite, the outlier fixture, the community
   score (`test/community/expected.json`) or `docs/COMPATIBILITY.md` is not
   changed without a changelog entry and, for a deliberate deviation, a version

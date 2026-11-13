@@ -1,9 +1,10 @@
+{-# OPTIONS_HADDOCK hide #-}
 {-# LANGUAGE LambdaCase #-}
 
 -- |
 -- Module      : JsonLogic.Core.Parse
 --
--- Reads a JSON 'Value' into a 'Rule'. Reading is an unfold
+-- Reads a JSON 'Value' into a 'RuleTree'. Reading is an unfold
 -- ('unfoldFixM'): a seed is a piece of JSON still to read, with how deeply it
 -- is nested and where it is, and each step produces one node whose children
 -- are further seeds.

@@ -1,3 +1,4 @@
+{-# OPTIONS_HADDOCK hide #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 -- |
@@ -15,7 +16,7 @@
 -- choosing each node's code) happens during the fold, so running a compiled
 -- rule many times pays for it once.
 --
--- Evaluation runs in 'Run' (see "JsonLogic.Core.Run"), a small
+-- Evaluation runs in @Run@ (see "JsonLogic.Core.Run"), a small
 -- state-passing monad whose state is the remaining step budget. See
 -- "JsonLogic.Core.Config" for the limits.
 --
@@ -416,7 +417,7 @@ between at holds x y z env = do
 -- | Condition/consequent pairs, then an optional else; no branch means null.
 --
 -- Hand-written recursion (Standard 4.1): a search that stops at the first
--- condition that holds, in 'Run'. It is a right fold with early exit, and
+-- condition that holds, in @Run@. It is a right fold with early exit, and
 -- @base@ has no monadic combinator for that shape.
 evalIf :: [Eval] -> Eval
 evalIf (condition : consequent : rest) env = do
@@ -504,7 +505,7 @@ reduceRule at@(At config _) collection logic initial env = do
 -- | Does the sub-rule hold for every item? Stops at the first that does not.
 --
 -- Hand-written recursion (Standard 4.1): a monadic @all@, which @base@ does
--- not provide, in 'Run'.
+-- not provide, in @Run@.
 allTruthy :: (Val -> Run Val) -> [Val] -> Run Bool
 allTruthy _ [] = pure True
 allTruthy logic (item : rest) = do

@@ -26,7 +26,8 @@ description:
   supplied by the caller, and dataUse reports which parts of the data a rule
   can read.
 
-  The supported API is the "JsonLogic" module, and nothing else is exposed;
+  The supported API is the "JsonLogic" module; the "JsonLogic.Core" modules are
+  hidden from the documentation and carry no stability promise;
   docs/TUTORIAL.md walks through it. The package also installs a small
   command, jsonlogic, to evaluate, check and inspect rules.
 category:           Data, JSON
@@ -112,15 +113,18 @@ common deps
                   , bytestring           >=0.11 && <0.13
                   , text                 >=2.0 && <2.3
 
--- Everything except the public module lives in a private internal library,
--- which only this package's own components (the tests) can import. What it
--- exports is therefore not part of the package's API, and can change in any
--- release without a version bump (docs/STABILITY.md).
-library internal
+-- One library. The JsonLogic module is the API; the JsonLogic.Core modules
+-- are compiled into the same library so the tests can reach them, and are
+-- hidden from the documentation (OPTIONS_HADDOCK hide): JsonLogic re-exports
+-- what is public, with its documentation, and nothing else is documented or
+-- supported (docs/STABILITY.md). A private internal library would keep them
+-- unimportable, but Haddock cannot link a package's documentation to its own
+-- private sublibrary, so the public module's re-exports would lose theirs.
+library
   import:           warnings, deps
-  visibility:       private
   hs-source-dirs:   src
-  exposed-modules:  JsonLogic.Core.Analysis
+  exposed-modules:  JsonLogic
+                    JsonLogic.Core.Analysis
                     JsonLogic.Core.Check
                     JsonLogic.Core.Config
                     JsonLogic.Core.Custom
@@ -141,14 +145,6 @@ library internal
                   , ghc-bignum           >=1.3 && <2
                   , scientific           >=0.3 && <0.4
                   , vector               >=0.12.3 && <0.14
-
--- The supported API: the JsonLogic module, and nothing else.
-library
-  import:           warnings, deps
-  hs-source-dirs:   api
-  exposed-modules:  JsonLogic
-  build-depends:    deepseq              >=1.4 && <1.7
-                  , jsonlogic-hs:internal
 
 -- The command-line tool: try, check and inspect rules without writing Haskell.
 executable jsonlogic
@@ -184,7 +180,6 @@ test-suite jsonlogic-hs-test
                   , scientific           >=0.3 && <0.4
                   , vector               >=0.12.3 && <0.14
                   , jsonlogic-hs
-                  , jsonlogic-hs:internal
 
 -- Runs the classic JsonLogic suite (test/tests.json) and fails if any case
 -- does not pass. Run it with:
@@ -210,7 +205,6 @@ test-suite jsonlogic-hs-outliers
                   , directory            >=1.3 && <1.4
                   , scientific           >=0.3 && <0.4
                   , jsonlogic-hs
-                  , jsonlogic-hs:internal
 
 -- Every example in docs/TUTORIAL.md, checked against the library.
 test-suite jsonlogic-hs-tutorial
