@@ -1,5 +1,5 @@
-{-# OPTIONS_HADDOCK hide #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_HADDOCK hide #-}
 
 -- |
 -- Module      : JsonLogic.Core.Config
@@ -21,17 +21,17 @@ module JsonLogic.Core.Config
   , UnknownOperators (..)
   , NumericSafety (..)
   , Config
-      ( maxDepth
-      , maxSteps
-      , maxStringLength
-      , maxArrayLength
-      , maxIterations
-      , maxNodes
-      , maxDataDepth
-      , arityMode
-      , unknownOperators
-      , numericSafety
-      )
+    ( maxDepth
+    , maxSteps
+    , maxStringLength
+    , maxArrayLength
+    , maxIterations
+    , maxNodes
+    , maxDataDepth
+    , arityMode
+    , unknownOperators
+    , numericSafety
+    )
   , ConfigError (..)
   , defaultConfig
   , unlimited

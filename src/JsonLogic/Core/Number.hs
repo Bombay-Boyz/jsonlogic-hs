@@ -1,5 +1,5 @@
-{-# OPTIONS_HADDOCK hide #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_HADDOCK hide #-}
 
 -- |
 -- Module      : JsonLogic.Core.Number

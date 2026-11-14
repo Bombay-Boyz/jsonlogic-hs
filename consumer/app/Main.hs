@@ -56,8 +56,14 @@ checks =
     , either (const False) (\ops -> applyWith ops (json "{\"double\":[21]}") Null == Right (Number 42)) doubling
     )
   ,
-    ( "an unknown operator is an error, not null"
-    , apply (json "{\"nope\":[1]}") Null == Left (EvalFailure (fromSegments []) (UnknownOperator (OperatorName "nope")))
+    ( "an unknown operator is refused when the rule is compiled, with a suggestion"
+    , apply (json "{\"nope\":[1]}") Null
+        == Left (ParseFailure (fromSegments []) (UnknownOperatorName (OperatorName "nope") [OperatorName "none"]))
+    )
+  ,
+    ( "an unknown operator fails only when reached, if asked to"
+    , applyWithConfig defaultConfig{unknownOperators = FailWhenReached} noOperators (json "{\"or\":[true,{\"nope\":[]}]}") Null
+        == Right (Bool True)
     )
   ,
     ( "an error says where it happened, as a JSON Pointer"

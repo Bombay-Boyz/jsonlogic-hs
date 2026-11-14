@@ -1,4 +1,5 @@
 {-# OPTIONS_HADDOCK hide #-}
+
 -- |
 -- Module      : JsonLogic.Core.Run
 --

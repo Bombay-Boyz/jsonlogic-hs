@@ -1,5 +1,5 @@
-{-# OPTIONS_HADDOCK hide #-}
 {-# LANGUAGE DeriveTraversable #-}
+{-# OPTIONS_HADDOCK hide #-}
 
 -- |
 -- Module      : JsonLogic.Core.Rule

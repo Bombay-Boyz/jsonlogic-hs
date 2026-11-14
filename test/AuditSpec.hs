@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 -- | Behaviour that a forensic engineering audit found wrong, pinned so it
@@ -5,8 +6,8 @@
 module AuditSpec (spec) where
 
 import Control.Concurrent (forkIO, killThread, newEmptyMVar, putMVar, takeMVar, threadDelay)
-import qualified Control.Exception
 import Control.Exception (AsyncException (..), Exception, fromException, throw, try)
+import qualified Control.Exception
 import Control.Monad (forM, forM_)
 import Data.Aeson (Value (..), object, (.=))
 import qualified Data.Aeson as Aeson
@@ -40,10 +41,10 @@ anyArity :: (Value -> [Value] -> Either CustomError Value) -> CustomOperator
 anyArity = pureOperator (AtLeast 0)
 
 lenientConfig, lazyConfig, preserve, rejectLossy :: Config
-lenientConfig = defaultConfig {arityMode = Lenient}
-lazyConfig = defaultConfig {unknownOperators = FailWhenReached}
-preserve = defaultConfig {numericSafety = PreserveSource}
-rejectLossy = defaultConfig {numericSafety = RejectLossy}
+lenientConfig = defaultConfig{arityMode = Lenient}
+lazyConfig = defaultConfig{unknownOperators = FailWhenReached}
+preserve = defaultConfig{numericSafety = PreserveSource}
+rejectLossy = defaultConfig{numericSafety = RejectLossy}
 
 withRule :: Operators -> Value -> (Rule -> IO ()) -> IO ()
 withRule operators rule test = case compile defaultConfig operators rule of
@@ -108,7 +109,7 @@ f01 = describe "F-01 tryRun never swallows an asynchronous exception" $ do
     withRule (registry [("boom", anyArity (\_ _ -> throw Boom))]) (call "boom" []) $ \ready -> do
       outcome <- tryRun ready Null
       case outcome of
-        Left (OperatorThrew e) -> fromException e `shouldSatisfy` \b -> case b of Just Boom -> True; Nothing -> False
+        Left (OperatorThrew e) -> fromException e `shouldSatisfy` \case Just Boom -> True; Nothing -> False
         other -> expectationFailure ("expected OperatorThrew, got " ++ show other)
   it "a rejection stays a value, apart from the exceptions" $
     withRule (registry [("fail", anyArity (\_ _ -> Left "no"))]) (call "fail" []) $ \ready -> do
@@ -154,8 +155,8 @@ f02 = describe "F-02 unknown operators are found when the rule is compiled" $ do
   it "follow the arity mode by default: lenient mode keeps the reference's laziness" $
     applyWithConfig lenientConfig noOperators (call "or" [Bool True, call "nope" []]) Null `shouldBe` Right (Bool True)
   it "can be refused in lenient mode too" $
-    applyWithConfig lenientConfig {unknownOperators = RejectAtCompile} noOperators (call "nope" []) Null
-      `shouldSatisfy` \r -> case r of Left (ParseFailure _ (UnknownOperatorName _ _)) -> True; _ -> False
+    applyWithConfig lenientConfig{unknownOperators = RejectAtCompile} noOperators (call "nope" []) Null
+      `shouldSatisfy` \case Left (ParseFailure _ (UnknownOperatorName _ _)) -> True; _ -> False
   it "are listed by unresolvedOperators when they are accepted" $
     case compile lazyConfig noOperators (call "and" [call "a" [], call "b" []]) of
       Right ready -> unresolvedOperators ready `shouldBe` [(at [Left "and", Right 0], OperatorName "a"), (at [Left "and", Right 1], OperatorName "b")]
@@ -172,10 +173,11 @@ f02 = describe "F-02 unknown operators are found when the rule is compiled" $ do
     applyWithConfig lenientConfig (registry [("two", pureOperator (Exactly 2) (\_ _ -> Right (Number 7)))]) (call "two" [Number 1]) Null
       `shouldBe` Right (Number 7)
   it "apply and compile-then-run agree, for any rule, including those that are refused" $
-    property $ forAll (genRule 5) $ \rule -> forAll (genData 3) $ \dat ->
-      case compile defaultConfig noOperators rule of
-        Left e -> apply rule dat === Left e
-        Right ready -> run ready dat === apply rule dat
+    property $
+      forAll (genRule 5) $ \rule -> forAll (genData 3) $ \dat ->
+        case compile defaultConfig noOperators rule of
+          Left e -> apply rule dat === Left e
+          Right ready -> run ready dat === apply rule dat
 
 -- ---------------------------------------------------------------------
 -- F-03: numbers a double cannot hold
@@ -205,17 +207,18 @@ f03 = describe "F-03 numbers a double cannot hold" $ do
       `shouldBe` Left (EvalFailure (fromSegments []) (LossyNumber 9007199254740993))
   it "are not confused with numbers that print back as written" $
     forM_ ["0", "1", "-1", "0.1", "0.5", "1e22", "9007199254740992", "1.7976931348623157e308", "5e-324", "123.456"] $ \text ->
-      applyWithConfig rejectLossy noOperators ident (object ["id" .= (json text)]) `shouldBe` Right (json text)
+      applyWithConfig rejectLossy noOperators ident (object ["id" .= json text]) `shouldBe` Right (json text)
   it "checkData screens the data once, for depth and (under RejectLossy) for lossy numbers" $ do
     checkData defaultConfig dat `shouldBe` Right ()
     checkData rejectLossy dat `shouldBe` Left (EvalFailure (fromSegments []) (LossyNumber 9007199254740993))
-    checkData defaultConfig {maxDataDepth = 3} (json "[[[[1]]]]")
+    checkData defaultConfig{maxDataDepth = 3} (json "[[[[1]]]]")
       `shouldBe` Left (EvalFailure (fromSegments []) (LimitExceeded (DataDepthLimit 3)))
-    checkData defaultConfig {maxDataDepth = 4} (json "[[[[1]]]]") `shouldBe` Right ()
+    checkData defaultConfig{maxDataDepth = 4} (json "[[[[1]]]]") `shouldBe` Right ()
   it "PreserveSource changes nothing for numbers a double holds" $
-    property $ forAll (genRule 4) $ \rule -> forAll (genData 3) $ \d ->
-      isNothing (firstLossyNumber rule) && isNothing (firstLossyNumber d) ==>
-        applyWithConfig preserve noOperators rule d === apply rule d
+    property $
+      forAll (genRule 4) $ \rule -> forAll (genData 3) $ \d ->
+        isNothing (firstLossyNumber rule) && isNothing (firstLossyNumber d) ==>
+          applyWithConfig preserve noOperators rule d === apply rule d
 
 -- ---------------------------------------------------------------------
 -- F-04: a string with a lone surrogate
@@ -258,11 +261,12 @@ f04 = describe "F-04 severed surrogate halves keep their identity" $ do
       -- a null element joins as nothing, but the comma between elements stays
       run1 (call "===" [call "cat" [Array (Vector.fromList [hi, Null]), lo], emoji]) `shouldBe` Right (Bool False)
   it "splitting a string anywhere and joining the parts gives it back" $
-    property $ forAll genEmojiText $ \s -> forAll (choose (0, utf16Len s)) $ \k ->
-      apply
-        (call "cat" [call "substr" [String s, Number 0, Number (fromIntegral k)], call "substr" [String s, Number (fromIntegral k)]])
-        Null
-        === Right (String s)
+    property $
+      forAll genEmojiText $ \s -> forAll (choose (0, utf16Len s)) $ \k ->
+        apply
+          (call "cat" [call "substr" [String s, Number 0, Number (fromIntegral k)], call "substr" [String s, Number (fromIntegral k)]])
+          Null
+          === Right (String s)
 
 utf16Len :: Text -> Int
 utf16Len s = sum [if fromEnum c > 0xFFFF then 2 else 1 | c <- Text.unpack s]
@@ -276,7 +280,7 @@ genEmojiText = Text.concat <$> listOf (elements ["a", "b", "\xE9", "\x1F600", "\
 
 f05 :: Spec
 f05 = describe "F-05 one limit model" $ do
-  let cfg = defaultConfig {maxIterations = 3}
+  let cfg = defaultConfig{maxIterations = 3}
       body = Bool True
       items :: Int -> Value
       items n = Array (Vector.fromList (map (Number . fromIntegral) [1 .. n]))
@@ -291,7 +295,7 @@ f05 = describe "F-05 one limit model" $ do
     applyWithConfig cfg noOperators reduceRule (items 4) `shouldBe` Left (EvalFailure root' (LimitExceeded (IterationLimit 3)))
     applyWithConfig cfg noOperators reduceRule (items 3) `shouldSatisfy` isRight
   it "the iteration limit and the build limit are separate" $ do
-    let wide = defaultConfig {maxIterations = 10, maxArrayLength = 2}
+    let wide = defaultConfig{maxIterations = 10, maxArrayLength = 2}
         keep n = call "filter" [object ["var" .= ("" :: Text)], call "<" [object ["var" .= ("" :: Text)], Number n]]
     -- keeps one of five: builds one element, so within the build limit
     applyWithConfig wide noOperators (keep 2) (items 5) `shouldBe` Right (json "[1]")
@@ -301,17 +305,20 @@ f05 = describe "F-05 one limit model" $ do
     applyWithConfig wide noOperators (call "map" [object ["var" .= ("" :: Text)], Number 1]) (items 5)
       `shouldBe` Left (EvalFailure root' (LimitExceeded (ArrayLimit 2)))
   it "a negative limit is refused, by name" $ do
-    validateConfig defaultConfig {maxSteps = -1} `shouldBe` Left (NegativeLimit "maxSteps")
-    validateConfig defaultConfig {maxIterations = -5, maxNodes = -1} `shouldBe` Left (NegativeLimit "maxIterations")
-    validateConfig defaultConfig {maxNodes = -1} `shouldBe` Left (NegativeLimit "maxNodes")
-    apply' defaultConfig {maxDepth = -1} (Number 1)
+    validateConfig defaultConfig{maxSteps = -1} `shouldBe` Left (NegativeLimit "maxSteps")
+    validateConfig defaultConfig{maxIterations = -5, maxNodes = -1} `shouldBe` Left (NegativeLimit "maxIterations")
+    validateConfig defaultConfig{maxNodes = -1} `shouldBe` Left (NegativeLimit "maxNodes")
+    apply' defaultConfig{maxDepth = -1} (Number 1)
       `shouldBe` Left (ParseFailure root' (InvalidConfig (NegativeLimit "maxDepth")))
   it "unlimited is accepted everywhere" $
-    applyWithConfig defaultConfig {maxSteps = unlimited, maxDepth = unlimited, maxNodes = unlimited, maxStringLength = unlimited, maxArrayLength = unlimited, maxIterations = unlimited}
-      noOperators (call "+" [Number 1, Number 2]) Null
+    applyWithConfig
+      defaultConfig{maxSteps = unlimited, maxDepth = unlimited, maxNodes = unlimited, maxStringLength = unlimited, maxArrayLength = unlimited, maxIterations = unlimited}
+      noOperators
+      (call "+" [Number 1, Number 2])
+      Null
       `shouldBe` Right (Number 3)
   it "zero is a limit, not a switch: it refuses everything it counts" $
-    applyWithConfig defaultConfig {maxSteps = 0} noOperators (Number 1) Null
+    applyWithConfig defaultConfig{maxSteps = 0} noOperators (Number 1) Null
       `shouldBe` Left (EvalFailure root' (LimitExceeded (StepLimit 0)))
   where
     root' = fromSegments []
@@ -339,9 +346,9 @@ f06 = describe "F-06 the custom operator contract" $ do
     kind (applyWithConfig defaultConfig ops (call "coalesce" [Null, fails]) Null) `shouldBe` Left "custom_operator_failed"
   it "forcing an operand spends steps from the same budget" $ do
     let rule = call "coalesce" [Null, Null, Null, Number 5]
-    applyWithConfig defaultConfig {maxSteps = 100} ops rule Null `shouldBe` Right (Number 5)
-    applyWithConfig defaultConfig {maxSteps = 3} ops rule Null
-      `shouldSatisfy` \r -> case r of Left (EvalFailure _ (LimitExceeded (StepLimit 3))) -> True; _ -> False
+    applyWithConfig defaultConfig{maxSteps = 100} ops rule Null `shouldBe` Right (Number 5)
+    applyWithConfig defaultConfig{maxSteps = 3} ops rule Null
+      `shouldSatisfy` \case Left (EvalFailure _ (LimitExceeded (StepLimit 3))) -> True; _ -> False
   it "a failure carries its code, message and details unchanged, at the operator" $
     applyWithConfig defaultConfig ops (call "if" [Bool True, fails, Null]) Null
       `shouldBe` Left (EvalFailure (at [Left "if", Right 1]) (CustomOperatorFailed (OperatorName "fail") (CustomError "boom" "it broke" (Just (Number 1)))))
@@ -386,22 +393,23 @@ f07 = describe "F-07 errors" $ do
           , EvalFailure root' (UnknownOperator (OperatorName "a"))
           ]
     -- a kind is unique within a stage (a parse and an eval error may share a name)
-    let tagged e = (errorKind e, case e of ParseFailure {} -> True; EvalFailure {} -> False)
+    let tagged e = (errorKind e, case e of ParseFailure{} -> True; EvalFailure{} -> False)
     length (uniq (map tagged errs)) `shouldBe` length errs
-    forM_ errs $ \e -> Aeson.toJSON e `shouldSatisfy` \v -> case v of Object _ -> True; _ -> False
+    forM_ errs $ \e -> Aeson.toJSON e `shouldSatisfy` \case Object _ -> True; _ -> False
   it "an invalid operand says which, what was needed, and what was given" $ do
     let r = applyWithConfig lenientConfig noOperators (call "missing_some" [Number 1, Null]) Null
-    fmap id (either (Left . renderError) Right r)
+    either (Left . renderError) Right r
       `shouldBe` Left "at the root of the rule: operator \"missing_some\": operand 2 must be a list of keys, but is null"
   it "validate reports every problem, in document order" $ do
     let rule = call "and" [call "nope" [], call "==" [Number 1], call "if" [Bool True, call "mox" []]]
     map errorLocation (validate defaultConfig noOperators rule)
       `shouldBe` [at [Left "and", Right 0], at [Left "and", Right 1], at [Left "and", Right 2, Left "if", Right 1]]
   it "validate is empty exactly when compile succeeds, and starts with compile's error" $
-    property $ forAll (genRule 5) $ \rule -> forAll (elements [defaultConfig, lenientConfig, lazyConfig]) $ \cfg ->
-      case compile cfg noOperators rule of
-        Right _ -> validate cfg noOperators rule === []
-        Left e -> take 1 (validate cfg noOperators rule) === [e]
+    property $
+      forAll (genRule 5) $ \rule -> forAll (elements [defaultConfig, lenientConfig, lazyConfig]) $ \cfg ->
+        case compile cfg noOperators rule of
+          Right _ -> validate cfg noOperators rule === []
+          Left e -> take 1 (validate cfg noOperators rule) === [e]
   it "validate sees problems in custom operators too" $ do
     let ops = registry [("two", pureOperator (Exactly 2) (\_ _ -> Right Null))]
     map errorKind (validate defaultConfig ops (call "or" [call "two" [Number 1], call "three" []]))
@@ -424,11 +432,13 @@ f10 = describe "F-10 locations order by position in the rule" $ do
     (fromSegments [Key "a", Index 1] < fromSegments [Key "a", Index 2]) `shouldBe` True
     (fromSegments [Key "a", Index 9] < fromSegments [Key "b"]) `shouldBe` True
   it "the order is that of the segment lists, whatever they are" $
-    property $ forAll (listOf genSegment) $ \xs -> forAll (listOf genSegment) $ \ys ->
-      compare (fromSegments xs) (fromSegments ys) === compare xs ys
+    property $
+      forAll (listOf genSegment) $ \xs -> forAll (listOf genSegment) $ \ys ->
+        compare (fromSegments xs) (fromSegments ys) === compare xs ys
   it "a parent is smaller than every extension of it" $
-    property $ forAll (listOf genSegment) $ \xs -> forAll genSegment $ \s ->
-      fromSegments xs < fromSegments (xs ++ [s])
+    property $
+      forAll (listOf genSegment) $ \xs -> forAll genSegment $ \s ->
+        fromSegments xs < fromSegments (xs ++ [s])
   where
     genSegment = oneof [Key <$> elements ["a", "b", "if", "var"], Index <$> choose (0, 5)]
 
@@ -463,7 +473,7 @@ f13 = describe "F-13 lenient surplus operands, in the reference's order" $ do
       `shouldBe` Left (EvalFailure (at [Left "missing_some", Right 2]) (UnknownOperator (OperatorName "nope")))
   it "the operator's own failure is still reported when the surplus is harmless" $
     applyWithConfig lenientConfig noOperators (call "missing_some" [Number 1, Null, Number 3]) Null
-      `shouldSatisfy` \r -> case r of Left (EvalFailure _ (InvalidOperand _ _)) -> True; _ -> False
+      `shouldSatisfy` \case Left (EvalFailure _ (InvalidOperand _ _)) -> True; _ -> False
   it "surplus operands are still evaluated, and discarded" $ do
     applyWithConfig lenientConfig noOperators (call "!" [Number 1, Number 2]) Null `shouldBe` Right (Bool False)
     applyWithConfig lenientConfig noOperators (call "!" [Number 1, call "nope" []]) Null `shouldSatisfy` isLeft
@@ -472,10 +482,11 @@ f13 = describe "F-13 lenient surplus operands, in the reference's order" $ do
       Right ready -> usedPaths (dataUse ready) `shouldBe` ["a", "b"]
       Left e -> expectationFailure (Text.unpack (renderError e))
   it "lenient and strict agree wherever strict accepts the rule" $
-    property $ forAll (genRule 5) $ \rule -> forAll (genData 3) $ \d ->
-      case apply rule d of
-        Left _ -> property True
-        Right r -> applyWithConfig lenientConfig noOperators rule d === Right r
+    property $
+      forAll (genRule 5) $ \rule -> forAll (genData 3) $ \d ->
+        case apply rule d of
+          Left _ -> property True
+          Right r -> applyWithConfig lenientConfig noOperators rule d === Right r
 
 -- ---------------------------------------------------------------------
 -- F-15: JSON text in and out
@@ -486,16 +497,17 @@ f15 = describe "F-15 applyBytes" $ do
   it "applies a rule to data, both as JSON text" $
     applyBytes "{\"+\":[{\"var\":\"a\"},1]}" "{\"a\":2}" `shouldSatisfy` \r -> either (const False) (== "3") r
   it "says which of the two is not JSON" $ do
-    applyBytes "{" "{}" `shouldSatisfy` \r -> case r of Left (MalformedRule _) -> True; _ -> False
-    applyBytes "{}" "}" `shouldSatisfy` \r -> case r of Left (MalformedData _) -> True; _ -> False
+    applyBytes "{" "{}" `shouldSatisfy` \case Left (MalformedRule _) -> True; _ -> False
+    applyBytes "{}" "}" `shouldSatisfy` \case Left (MalformedData _) -> True; _ -> False
   it "reports a refusal as an Error" $
-    applyBytes "{\"nope\":[]}" "null" `shouldSatisfy` \r -> case r of Left (Refused (ParseFailure _ _)) -> True; _ -> False
+    applyBytes "{\"nope\":[]}" "null" `shouldSatisfy` \case Left (Refused (ParseFailure _ _)) -> True; _ -> False
   it "agrees with apply" $
-    property $ forAll (genRule 4) $ \rule -> forAll (genData 3) $ \d ->
-      case (apply rule d, applyBytes (Aeson.encode rule) (Aeson.encode d)) of
-        (Right v, Right bytes) -> Aeson.decode bytes === Just v
-        (Left e, Left (Refused e')) -> e === e'
-        (a, b) -> counterexample (show (a, b)) False
+    property $
+      forAll (genRule 4) $ \rule -> forAll (genData 3) $ \d ->
+        case (apply rule d, applyBytes (Aeson.encode rule) (Aeson.encode d)) of
+          (Right v, Right bytes) -> Aeson.decode bytes === Just v
+          (Left e, Left (Refused e')) -> e === e'
+          (a, b) -> counterexample (show (a, b)) False
 
 -- ---------------------------------------------------------------------
 -- Sharing a compiled rule

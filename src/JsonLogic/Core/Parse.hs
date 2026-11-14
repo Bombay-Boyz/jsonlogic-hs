@@ -1,5 +1,5 @@
-{-# OPTIONS_HADDOCK hide #-}
 {-# LANGUAGE LambdaCase #-}
+{-# OPTIONS_HADDOCK hide #-}
 
 -- |
 -- Module      : JsonLogic.Core.Parse
@@ -37,17 +37,17 @@ import Data.Foldable (toList)
 import Data.Text (Text)
 
 import JsonLogic.Core.Check (customProblem)
-import JsonLogic.Core.Custom (Operators)
 import JsonLogic.Core.Config (ArityMode (..), Config (..), NumericSafety (..), validateConfig)
+import JsonLogic.Core.Custom (Operators)
 import JsonLogic.Core.Errors (Arity (..), ParseError (..))
 import JsonLogic.Core.Location (Location, Segment (..), child, root)
+import JsonLogic.Core.Number (printsAsSource)
 import JsonLogic.Core.Operator
   ( Builtin (..)
   , OperatorName (..)
   , builtinOperatorName
   , lookupBuiltin
   )
-import JsonLogic.Core.Number (printsAsSource)
 import JsonLogic.Core.Rule (Node (..), RuleF (..), RuleTree)
 import JsonLogic.Core.Value (firstLossyNumber, jsonWeightUpTo, nestsDeeperThan, saturatingSucc)
 
@@ -77,7 +77,7 @@ parseProblems config operators value = case preliminary config value of
   where
     go seed = case step config operators seed of
       Left problem -> [problem]
-      Right (Node _ node) -> concatMap go (toList node)
+      Right (Node _ node) -> concatMap go node
 
 -- | The checks made before any of the rule is read.
 preliminary :: Config -> Value -> Maybe (Location, ParseError)

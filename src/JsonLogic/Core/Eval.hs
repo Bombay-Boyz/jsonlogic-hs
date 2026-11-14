@@ -1,5 +1,5 @@
-{-# OPTIONS_HADDOCK hide #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_HADDOCK hide #-}
 
 -- |
 -- Module      : JsonLogic.Core.Eval
@@ -56,10 +56,10 @@ import JsonLogic.Core.Run (At (..), Result (..), Run (..), exceeded, failAt, spe
 import JsonLogic.Core.Utf16
   ( Units
   , fromUnits
+  , toUnits
+  , unitsIsInfixOf
   , unitsLength
   , unitsSlice
-  , unitsIsInfixOf
-  , toUnits
   , utf16CharAtExact
   , utf16Length
   , utf16SliceExact
@@ -300,7 +300,7 @@ compileBody at@(At config _) operators node = case node of
   Log operand -> operand
   Applied builtin used extras ->
     let count = length used
-        slots = [\env -> pure (slotAt i env) | i <- [0 .. count - 1]]
+        slots = [pure . slotAt i | i <- [0 .. count - 1]]
      in case buildBuiltin builtin slots of
           Nothing -> const (failAt at (UnknownOperator (builtinOperatorName builtin)))
           Just inner ->
@@ -309,7 +309,7 @@ compileBody at@(At config _) operators node = case node of
                   -- every operand, left to right, then the operator on the
                   -- first few: the reference's order
                   values <- evalAll (used ++ extras) env
-                  apply env {envSlots = take count values}
+                  apply env{envSlots = take count values}
   CustomOp name operands -> case lookupOperator operators name of
     Nothing -> \env -> evalAll operands env >> failAt at (UnknownOperator name)
     Just (Eager _ implementation) -> \env -> do

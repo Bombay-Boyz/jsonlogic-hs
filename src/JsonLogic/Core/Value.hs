@@ -1,6 +1,5 @@
-{-# OPTIONS_HADDOCK hide #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE PatternSynonyms #-}
+{-# OPTIONS_HADDOCK hide #-}
 
 -- |
 -- Module      : JsonLogic.Core.Value
@@ -110,7 +109,6 @@ numberOf :: Val -> Maybe Double
 numberOf (VNum d) = Just d
 numberOf (VBig d _) = Just d
 numberOf _ = Nothing
-
 
 -- | Structural equality, in which @NaN@ equals @NaN@, so that equality is
 -- reflexive. (This is not JavaScript's @==@, which is 'looseEquals', nor its

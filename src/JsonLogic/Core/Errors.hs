@@ -1,5 +1,5 @@
-{-# OPTIONS_HADDOCK hide #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_HADDOCK hide #-}
 
 -- |
 -- Module      : JsonLogic.Core.Errors
@@ -251,15 +251,15 @@ quoted name = "\"" <> name <> "\""
 errorKind :: Error -> Text
 errorKind (ParseFailure _ problem) = case problem of
   DepthExceeded _ -> "depth_exceeded"
-  ArityMismatch {} -> "arity_mismatch"
+  ArityMismatch{} -> "arity_mismatch"
   NodeLimitExceeded _ -> "node_limit_exceeded"
-  UnknownOperatorName {} -> "unknown_operator"
+  UnknownOperatorName{} -> "unknown_operator"
   InvalidConfig _ -> "invalid_config"
   LossyNumberLiteral _ -> "lossy_number"
 errorKind (EvalFailure _ problem) = case problem of
   UnknownOperator _ -> "unknown_operator"
-  CustomOperatorFailed {} -> "custom_operator_failed"
-  InvalidOperand {} -> "invalid_operand"
+  CustomOperatorFailed{} -> "custom_operator_failed"
+  InvalidOperand{} -> "invalid_operand"
   LimitExceeded _ -> "limit_exceeded"
   LossyNumber _ -> "lossy_number"
 
@@ -366,4 +366,3 @@ instance NFData OperatorsError where
 instance NFData Error where
   rnf (ParseFailure location problem) = rnf location `seq` rnf problem
   rnf (EvalFailure location problem) = rnf location `seq` rnf problem
-

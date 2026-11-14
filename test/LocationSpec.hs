@@ -60,10 +60,10 @@ spec = describe "error locations" $ do
         Left e | Just name <- operatorOf e -> counterexample (show e) (operatorAt (errorLocation e) rule === Just name)
         _ -> property True
   it "follow bare operands, which have no index" $
-    applyWithConfig defaultConfig {unknownOperators = FailWhenReached} noOperators (json "{\"!\":{\"!\":{\"nope\":1}}}") Null
+    applyWithConfig defaultConfig{unknownOperators = FailWhenReached} noOperators (json "{\"!\":{\"!\":{\"nope\":1}}}") Null
       `shouldBe` Left (EvalFailure (at [Left "!", Left "!"]) (UnknownOperator (OperatorName "nope")))
   it "point into literals' own arrays" $
-    applyWithConfig defaultConfig {unknownOperators = FailWhenReached} noOperators (json "{\"merge\":[[{\"nope\":[]}]]}") Null
+    applyWithConfig defaultConfig{unknownOperators = FailWhenReached} noOperators (json "{\"merge\":[[{\"nope\":[]}]]}") Null
       `shouldBe` Left (EvalFailure (at [Left "merge", Right 0, Right 0]) (UnknownOperator (OperatorName "nope")))
   it "put an operand the rule leaves out at the operator call, which exists" $
     -- five steps: the and, its true, the ==, its 1, and the undefined that

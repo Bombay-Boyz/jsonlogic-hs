@@ -17,4 +17,4 @@
     # `error` is allowed only in the test modules that build fixtures from
     # literals, where a malformed literal is a bug in the test itself
     # (docs/adr/0004).
-    - {name: error, within: [CompatSpec, EvalSpec, LimitsSpec], message: "partial: return an Either (Standard 1.1)"}
+    - {name: error, within: [AuditSpec, CompatSpec, EvalSpec, LimitsSpec], message: "partial: return an Either (Standard 1.1)"}

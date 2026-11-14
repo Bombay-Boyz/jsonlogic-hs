@@ -24,11 +24,11 @@ q = LBS.map (\byte -> if byte == 39 then 34 else byte)
 -- | The reference's own reading of a rule: lenient arity, and an operator
 -- nobody supplied fails only if it is reached.
 reference :: Config
-reference = defaultConfig {arityMode = Lenient}
+reference = defaultConfig{arityMode = Lenient}
 
 -- | Strict arity, but an unknown operator fails only when reached.
 lazyUnknown :: Config
-lazyUnknown = defaultConfig {unknownOperators = FailWhenReached}
+lazyUnknown = defaultConfig{unknownOperators = FailWhenReached}
 
 evaluates :: LBS.ByteString -> LBS.ByteString -> LBS.ByteString -> Expectation
 evaluates rule input expected =

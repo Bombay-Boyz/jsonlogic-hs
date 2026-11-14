@@ -1,5 +1,4 @@
 {-# OPTIONS_HADDOCK hide #-}
-{-# LANGUAGE OverloadedStrings #-}
 
 -- |
 -- Module      : JsonLogic.Core.Check

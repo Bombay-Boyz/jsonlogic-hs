@@ -54,17 +54,17 @@ module JsonLogic
 
     -- * Configuration
   , Config
-      ( maxDepth
-      , maxSteps
-      , maxStringLength
-      , maxArrayLength
-      , maxIterations
-      , maxNodes
-      , maxDataDepth
-      , arityMode
-      , unknownOperators
-      , numericSafety
-      )
+    ( maxDepth
+    , maxSteps
+    , maxStringLength
+    , maxArrayLength
+    , maxIterations
+    , maxNodes
+    , maxDataDepth
+    , arityMode
+    , unknownOperators
+    , numericSafety
+    )
   , ArityMode (..)
   , UnknownOperators (..)
   , NumericSafety (..)
@@ -116,6 +116,7 @@ import Data.Aeson (Value)
 import qualified Data.Aeson as Aeson
 import Data.Bifunctor (first)
 import qualified Data.ByteString.Lazy as LazyByteString
+import Data.Maybe (fromMaybe)
 import System.Timeout (timeout)
 
 import JsonLogic.Core.Analysis (DataUse (..))
@@ -232,7 +233,7 @@ tryRun rule input = do
 -- still slow, and this is how to bound it.
 runWithTimeout :: Int -> Rule -> Value -> IO (Either RunFailure Value)
 runWithTimeout microseconds rule input =
-  maybe (Left TimedOut) id <$> timeout microseconds (tryRun rule input)
+  fromMaybe (Left TimedOut) <$> timeout microseconds (tryRun rule input)
 
 -- | Every problem 'compile' would find in a rule, not only the first, in
 -- document order, so that a rule can be fixed in one pass. Empty exactly when
@@ -303,8 +304,8 @@ applyBytes :: LazyByteString.ByteString -> LazyByteString.ByteString -> Either B
 applyBytes = applyBytesWith defaultConfig noOperators
 
 -- | 'applyBytes' with an explicit 'Config' and extra operators.
-applyBytesWith
-  :: Config -> Operators -> LazyByteString.ByteString -> LazyByteString.ByteString -> Either BytesError LazyByteString.ByteString
+applyBytesWith ::
+  Config -> Operators -> LazyByteString.ByteString -> LazyByteString.ByteString -> Either BytesError LazyByteString.ByteString
 applyBytesWith config operators rule input = do
   ruleValue <- first MalformedRule (Aeson.eitherDecode rule)
   inputValue <- first MalformedData (Aeson.eitherDecode input)
