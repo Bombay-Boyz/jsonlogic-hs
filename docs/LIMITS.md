@@ -20,7 +20,14 @@ applyWithConfig defaultConfig {maxSteps = 10000, maxStringLength = 4096} noOpera
 | `maxDepth` | 64 | levels of nesting of the rule, of any literal in it, and of a custom operator's result | `ParseFailure _ (DepthExceeded n)` or `EvalFailure _ (LimitExceeded (ValueDepthLimit n))` |
 | `maxSteps` | 1,000,000 | see below | `EvalFailure _ (LimitExceeded (StepLimit n))` |
 | `maxStringLength` | 1,048,576 | UTF-16 code units, the longest string `cat` builds | `EvalFailure _ (LimitExceeded (StringLimit n))` |
-| `maxArrayLength` | 100,000 | elements, the longest array `merge` builds and the longest `map` or `filter` iterates | `EvalFailure _ (LimitExceeded (ArrayLimit n))` |
+| `maxArrayLength` | 100,000 | elements, the longest array `merge`, `map` or `filter` builds | `EvalFailure _ (LimitExceeded (ArrayLimit n))` |
+| `maxIterations` | 100,000 | elements, the longest array `map`, `filter`, `reduce`, `all`, `none` or `some` iterates: the same for all six, and separate from what is built | `EvalFailure _ (LimitExceeded (IterationLimit n))` |
+| `maxNodes` | 1,000,000 | nodes in the rule's JSON, checked before it is read | `ParseFailure _ (NodeLimitExceeded n)` |
+| `maxDataDepth` | 1,000 | levels of nesting of the data, checked by `checkData` | `EvalFailure _ (LimitExceeded (DataDepthLimit n))` |
+
+A limit of `unlimited` means no limit. A negative limit is refused by
+`validateConfig` (every entry point calls it) as `InvalidConfig`, instead of
+silently meaning "refuse everything".
 
 Each limit is exact: a rule that needs exactly the limit succeeds and one
 more fails, and the tests check both sides of every boundary. The `_` in each
@@ -45,19 +52,26 @@ under a second.
 
 ## What is not bounded
 
-- **Wall-clock time.** The limits bound work, not seconds. Run untrusted
-  evaluations with a timeout (`System.Timeout.timeout`) as well if that
-  matters; evaluation is pure and can be interrupted safely.
+- **Wall-clock time.** The limits bound work, not seconds. Use
+  `runWithTimeout` as well if that matters; evaluation is pure and can be
+  interrupted safely. `tryRun` and `runWithTimeout` re-throw asynchronous
+  exceptions (a timeout, `killThread`), so cancellation always reaches the
+  caller.
 - **A custom operator's own work.** The library cannot see inside it. Its
   *result* is held to the depth and step limits.
 - **The size of the input.** The rule and the data are values you already
   hold. Parsing JSON text is aeson's job, and it has no depth limit of its
-  own: bound the size of untrusted text before decoding it.
-- **Searching or slicing a very large string.** `in`, `substr` and string
-  comparison take time linear in the string, which comes from the data you
-  hold; the string limit bounds what `cat` builds, not what the data holds.
-- **Reading a long numeric string.** It is linear in its length (a
-  million-digit string takes about 0.15 s), not bounded by a step.
+  own: bound the size of untrusted text before decoding it, and screen the
+  decoded data once with `checkData` (depth, and under `RejectLossy`,
+  numbers a double cannot carry). Evaluation does not walk the data.
+- **Reading a very long JSON number.** Converting a number literal to a
+  double is close to linear in its digits (a million-digit literal takes
+  about 11 ms, measured) and is not charged to a step; the size of the rule
+  and the data is bounded by whoever supplies them.
+
+Searching, slicing and reading a long numeric string, by contrast, *are*
+charged: one step per 64 bytes scanned (`in`, `substr`, string comparison)
+and per 8 bytes read as a number.
 
 ## Cost
 
@@ -65,7 +79,8 @@ The limits are cheap. Every node costs one counter decrement, and the work
 that is charged in proportion to size is work that is done anyway. On one
 machine (`bench/Bench.hs`, `run` of a compiled rule): `map` or `filter` over
 10,000 elements takes about 2 ms, `reduce` about 3 ms, and a small rule well
-under a microsecond. To apply one rule many times, `compile` it once and
+under a microsecond. (Each `run` also converts the data it reads, so a rule
+with a tiny body over a large array is dominated by that.) To apply one rule many times, `compile` it once and
 `run` it: reading and compiling happen once.
 
 `bash scripts/bench.sh` times a fixed set of workloads and records the

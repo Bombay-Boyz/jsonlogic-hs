@@ -21,7 +21,7 @@ json :: String -> Value
 json text = fromMaybe Null (decode (Char8.pack text))
 
 doubling :: Either OperatorsError Operators
-doubling = operatorsFromList [(OperatorName "double", implementation)]
+doubling = operatorsFromList [(OperatorName "double", pureOperator (Exactly 1) implementation)]
   where
     implementation _ [Number n] = Right (Number (n * 2))
     implementation _ _ = Left "expected one number"
@@ -56,8 +56,14 @@ checks =
     , either (const False) (\ops -> applyWith ops (json "{\"double\":[21]}") Null == Right (Number 42)) doubling
     )
   ,
-    ( "an unknown operator is an error, not null"
-    , apply (json "{\"nope\":[1]}") Null == Left (EvalFailure (fromSegments []) (UnknownOperator (OperatorName "nope")))
+    ( "an unknown operator is refused when the rule is compiled, with a suggestion"
+    , apply (json "{\"nope\":[1]}") Null
+        == Left (ParseFailure (fromSegments []) (UnknownOperatorName (OperatorName "nope") [OperatorName "none"]))
+    )
+  ,
+    ( "an unknown operator fails only when reached, if asked to"
+    , applyWithConfig defaultConfig{unknownOperators = FailWhenReached} noOperators (json "{\"or\":[true,{\"nope\":[]}]}") Null
+        == Right (Bool True)
     )
   ,
     ( "an error says where it happened, as a JSON Pointer"
@@ -65,7 +71,7 @@ checks =
     )
   ,
     ( "a custom operator may not shadow a builtin"
-    , either Just (const Nothing) (operatorsFromList [(OperatorName "var", \_ _ -> Right Null)])
+    , either Just (const Nothing) (operatorsFromList [(OperatorName "var", pureOperator (AtLeast 0) (\_ _ -> Right Null))])
         == Just (ReservedOperatorName (OperatorName "var"))
     )
   ]

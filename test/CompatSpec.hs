@@ -53,15 +53,15 @@ spec = do
     it "strict rejects * with no operands before evaluating anything" $
       strict "{\"*\":[]}" "null" `shouldBe` Left (ParseProblem (ArityMismatch (OperatorName "*") (AtLeast 1) 0))
     it "lenient throws on * with no operands only when it is evaluated, as the reference does" $ do
-      lenient "{\"*\":[]}" "null" `shouldBe` Left (EvalProblem (InvalidOperand (OperatorName "*")))
+      lenient "{\"*\":[]}" "null" `shouldBe` Left (EvalProblem (InvalidOperand (OperatorName "*") (OperandIssue 0 "at least one operand" "none")))
       lenient "{\"if\":[true,1,{\"*\":[]}]}" "null" `shouldBe` Right (Number 1)
       lenient "{\"or\":[1,{\"*\":[]}]}" "null" `shouldBe` Right (Number 1)
       lenient "{\"and\":[0,{\"*\":[]}]}" "null" `shouldBe` Right (Number 0)
       lenient "{\"map\":[[],{\"*\":[]}]}" "null" `shouldBe` Right (toJSON ([] :: [Int]))
-      lenient "{\"and\":[1,{\"*\":[]}]}" "null" `shouldBe` Left (EvalProblem (InvalidOperand (OperatorName "*")))
+      lenient "{\"and\":[1,{\"*\":[]}]}" "null" `shouldBe` Left (EvalProblem (InvalidOperand (OperatorName "*") (OperandIssue 0 "at least one operand" "none")))
     it "locates the empty * that was reached" $
       applyWithConfig defaultConfig{arityMode = Lenient} noOperators (json "{\"and\":[1,{\"*\":[]}]}") Null
-        `shouldBe` Left (EvalFailure (at [Left "and", Right 1]) (InvalidOperand (OperatorName "*")))
+        `shouldBe` Left (EvalFailure (at [Left "and", Right 1]) (InvalidOperand (OperatorName "*") (OperandIssue 0 "at least one operand" "none")))
     it "strict success implies the same lenient answer" $
       forAll (genRuleForArity 4) $ \rule -> case apply rule Null of
         Right v -> applyWithConfig defaultConfig{arityMode = Lenient} noOperators rule Null === Right v
@@ -149,7 +149,7 @@ spec = do
       strict "{\"missing_some\":[2,\"ab\"]}" "{}" `shouldBe` Right (json "[\"ab\"]")
     it "throws where the reference throws on a null option list" $
       strict "{\"missing_some\":[1,null]}" "{}"
-        `shouldBe` Left (EvalProblem (InvalidOperand (OperatorName "missing_some")))
+        `shouldBe` Left (EvalProblem (InvalidOperand (OperatorName "missing_some") (OperandIssue 1 "a list of keys" "null")))
     it "returns the missing keys when the options have no length" $
       strict "{\"missing_some\":[0,0]}" "{}" `shouldBe` Right (json "[0]")
 
@@ -163,11 +163,11 @@ spec = do
 
   describe "undefined" $ do
     it "an object property that is undefined is left out, as JSON.stringify does" $
-      strict "{\"reduce\":[[0],{\"var\":\"\"},{\"and\":[]}]}" "null" `shouldBe` Right (json "{\"current\":0}")
+      lenient "{\"reduce\":[[0],{\"var\":\"\"},{\"and\":[]}]}" "null" `shouldBe` Right (json "{\"current\":0}")
 
   describe "custom operators" $ do
     let double :: CustomOperator
-        double _ args = case args of
+        double = pureOperator (Exactly 1) $ \_ args -> case args of
           [Number n] -> Right (Number (n * 2))
           _ -> Left "expected one number"
     it "are refused when named like a builtin, instead of being ignored" $
@@ -178,19 +178,25 @@ spec = do
       case operatorsFromList [(OperatorName "double", double), (OperatorName "double", double)] of
         Left e -> e `shouldBe` DuplicateOperatorName (OperatorName "double")
         Right _ -> expectationFailure "a duplicate name was accepted"
-    it "compose left-biased" $ do
-      let a = registry [(OperatorName "f", \_ _ -> Right (toJSON (1 :: Int)))]
-          b = registry [(OperatorName "f", \_ _ -> Right (toJSON (2 :: Int))), (OperatorName "g", \_ _ -> Right (toJSON (3 :: Int)))]
-          both = a <> b
-      applyWith both (object ["f" .= ([] :: [Int])]) Null `shouldBe` Right (Number 1)
-      applyWith both (object ["g" .= ([] :: [Int])]) Null `shouldBe` Right (Number 3)
+    it "combine when their names are disjoint, and refuse a name both define" $ do
+      let a = registry [(OperatorName "f", pureOperator (AtLeast 0) (\_ _ -> Right (toJSON (1 :: Int))))]
+          b = registry [(OperatorName "f", pureOperator (AtLeast 0) (\_ _ -> Right (toJSON (2 :: Int))))]
+          c = registry [(OperatorName "g", pureOperator (AtLeast 0) (\_ _ -> Right (toJSON (3 :: Int))))]
+      case combineOperators a c of
+        Right both -> do
+          applyWith both (object ["f" .= ([] :: [Int])]) Null `shouldBe` Right (Number 1)
+          applyWith both (object ["g" .= ([] :: [Int])]) Null `shouldBe` Right (Number 3)
+        Left e -> expectationFailure ("disjoint registries were refused: " <> show e)
+      either Just (const Nothing) (combineOperators a b) `shouldBe` Just (DuplicateOperatorName (OperatorName "f"))
     it "a custom failure inside map stops the evaluation" $ do
       let ops = registry [(OperatorName "double", double)]
       applyWith ops (json "{\"map\":[[1,\"x\"],{\"double\":[{\"var\":\"\"}]}]}") Null
         `shouldBe` Left (EvalFailure (at [Left "map", Right 1]) (CustomOperatorFailed (OperatorName "double") "expected one number"))
     it "combining with the empty registry changes nothing" $ do
       let ops = registry [(OperatorName "double", double)]
-      applyWith (ops <> noOperators) (json "{\"double\":[2]}") Null `shouldBe` Right (Number 4)
+      case combineOperators ops noOperators of
+        Right same -> applyWith same (json "{\"double\":[2]}") Null `shouldBe` Right (Number 4)
+        Left e -> expectationFailure (show e)
 
   describe "renderError" $ do
     it "describes each constructor, after the location" $ do

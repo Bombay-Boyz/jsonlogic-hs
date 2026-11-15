@@ -120,6 +120,8 @@ main = do
         ++ show (count "strict-ok")
         ++ "\n  strict rejected by arity:          "
         ++ show (count "strict-arity")
+        ++ "\n  strict rejected unknown operator:  "
+        ++ show (count "strict-unknown")
         ++ "\n  inherited-property deviation:      "
         ++ show (count "inherited")
         ++ "\n  re-evaluation deviation (skipped): "
@@ -211,6 +213,9 @@ runCase bump failWith c
           | strictRejects c name accepted given -> bump "strict-arity"
           | otherwise ->
               failWith (describe c "strict" target strict "arity rejection that the operator's arity does not justify")
+        -- an operator nobody registered is refused when the rule is compiled
+        -- (the reference finds out only if it reaches it): always justified
+        Left (ParseFailure _ (UnknownOperatorName _ _)) -> bump "strict-unknown"
         _ -> case judge target strict of
           Nothing -> bump "strict-ok"
           Just why -> failWith (describe c "strict" target strict why)
@@ -240,8 +245,8 @@ classOf :: Text -> Error -> Bool
 classOf message e = case e of
   EvalFailure _ (UnknownOperator _) ->
     "Unrecognized operation" `isInfixOf` m || "apply is not a function" `isInfixOf` m
-  EvalFailure _ (InvalidOperand (OperatorName "*")) -> "Reduce of empty array" `isInfixOf` m
-  EvalFailure _ (InvalidOperand _) -> "Cannot read properties" `isInfixOf` m
+  EvalFailure _ (InvalidOperand (OperatorName "*") _) -> "Reduce of empty array" `isInfixOf` m
+  EvalFailure _ (InvalidOperand _ _) -> "Cannot read properties" `isInfixOf` m
   ParseFailure _ (ArityMismatch (OperatorName "*") _ 0) -> "Reduce of empty array" `isInfixOf` m
   _ -> False
   where

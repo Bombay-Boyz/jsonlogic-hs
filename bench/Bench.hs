@@ -71,7 +71,7 @@ dataFor n =
 
 -- | One custom operator, to price the extension point.
 customOps :: Operators
-customOps = fromRight noOperators (operatorsFromList [(OperatorName "double", doubling)])
+customOps = fromRight noOperators (operatorsFromList [(OperatorName "double", pureOperator (Exactly 1) doubling)])
   where
     doubling _ [Number k] = Right (Number (k * 2))
     doubling _ _ = Left "expected one number"

@@ -19,8 +19,9 @@ json :: String -> Value
 json = fromMaybe Null . decode . Char8.pack
 
 startsWith :: CustomOperator
-startsWith _ [String prefix, String s] = Right (Bool (prefix `Text.isPrefixOf` s))
-startsWith _ _ = Left "starts_with takes two strings"
+startsWith = pureOperator (Exactly 2) $ \_ arguments -> case arguments of
+  [String prefix, String s] -> Right (Bool (prefix `Text.isPrefixOf` s))
+  _ -> Left "starts_with takes two strings"
 
 operators :: Either OperatorsError Operators
 operators = operatorsFromList [(OperatorName "starts_with", startsWith)]
@@ -54,11 +55,19 @@ checks =
       ((\rule -> map (run rule) [json "{\"price\": 10}", json "{\"price\": 2.5}"]) <$> compile defaultConfig noOperators (json "{\"*\": [{\"var\": \"price\"}, 1.2]}"))
   , check
       "4 location"
-      (Left (EvalFailure (fromSegments [Key "if", Index 1]) (UnknownOperator (OperatorName "nope"))))
+      (Left (ParseFailure (fromSegments [Key "if", Index 1]) (UnknownOperatorName (OperatorName "nope") [OperatorName "none"])))
       (apply (json "{\"if\": [true, {\"nope\": [1]}]}") Null)
-  , check "4 render" ("at /if/1: unknown operator \"nope\"" :: Text) (either renderError (const "") (apply (json "{\"if\": [true, {\"nope\": [1]}]}") Null))
+  , check
+      "4 suggestion"
+      (Left (ParseFailure (fromSegments []) (UnknownOperatorName (OperatorName "missing_sone") [OperatorName "missing_some"])))
+      (apply (json "{\"missing_sone\": [1, [\"a\"]]}") Null)
+  , check
+      "4 validate"
+      [fromSegments [Key "and", Index 0], fromSegments [Key "and", Index 1]]
+      (map errorLocation (validate defaultConfig noOperators (json "{\"and\": [{\"nope\": []}, {\"mox\": []}]}")))
+  , check "4 render" ("at /if/1: unknown operator \"nope\"; did you mean \"none\"?" :: Text) (either renderError (const "") (apply (json "{\"if\": [true, {\"nope\": [1]}]}") Null))
   , check "4 describe" "rule error at \"\": \"==\" given 1" (describe (apply (json "{\"==\": [1]}") Null))
-  , check "4 lazy" (Right (Bool True)) (apply (json "{\"or\": [true, {\"nope\": []}]}") Null)
+  , check "4 lazy" (Right (Bool True)) (applyWithConfig defaultConfig{unknownOperators = FailWhenReached} noOperators (json "{\"or\": [true, {\"nope\": []}]}") Null)
   , check
       "5 strict"
       (Left (ParseFailure (fromSegments []) (ArityMismatch (OperatorName "==") (Exactly 2) 1)))
@@ -80,7 +89,7 @@ checks =
   , check
       "7 custom failure"
       (Right (Left (EvalFailure (fromSegments []) (CustomOperatorFailed (OperatorName "starts_with") "starts_with takes two strings"))))
-      ((\ops -> applyWith ops (json "{\"starts_with\": [1]}") Null) <$> operators)
+      ((\ops -> applyWith ops (json "{\"starts_with\": [1, 2]}") Null) <$> operators)
   , check
       "8 dataUse"
       (Right (DataUse ["orders", "user.age"] False))

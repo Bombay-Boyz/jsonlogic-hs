@@ -63,14 +63,19 @@ where the *same* array or object is reached twice, for example
 `{"===": [{"var": ""}, {"var": ""}]}` on `{}`, which is `true` in
 JavaScript. Generated tests avoid such comparisons.
 
-### DEV-LONE-SURROGATE: a severed surrogate pair becomes U+FFFD
+### DEV-LONE-SURROGATE: a lone surrogate leaves the rule as U+FFFD
 
 Strings are measured, indexed, sliced and ordered by UTF-16 code unit, as in
-JavaScript: `"😀"` has length 2, and sorts below `"\uE000"`. A Haskell `Text`
-cannot hold half of a surrogate pair, so a slice that cuts through one
-(`{"substr": ["😀", 0, 1]}`, or indexing `s.0`) returns U+FFFD for the
-severed half. This is exactly what `String.prototype.toWellFormed()` makes
-of the reference's answer, and is how the fixture normalises it.
+JavaScript: `"😀"` has length 2, and sorts below `"\uE000"`. A slice that
+cuts through a surrogate pair (`{"substr": ["😀", 0, 1]}`, or indexing
+`s.0`) is a string that holds a lone surrogate, which a Haskell `Text` cannot,
+so inside the evaluation it is kept as its UTF-16 code units. It behaves as in
+JavaScript there: the two halves are unequal, they order by code unit, they
+are found by `in`, and `cat` joins them back into the character. It becomes
+U+FFFD only in the *result*, because JSON text cannot carry a lone surrogate
+(what `String.prototype.toWellFormed()` makes of the reference's answer). The
+differential tester runs the reference unpatched and normalises only the final
+answer.
 
 ### DEV-INHERITED: only own properties are visible
 

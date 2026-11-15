@@ -135,9 +135,13 @@ errorType failure = case failure of
   ParseFailure _ (ArityMismatch{}) -> "Invalid Arguments"
   ParseFailure _ (DepthExceeded _) -> "Limit Exceeded"
   ParseFailure _ (NodeLimitExceeded _) -> "Limit Exceeded"
+  ParseFailure _ (UnknownOperatorName _ _) -> "Unknown Operator"
+  ParseFailure _ (InvalidConfig _) -> "Invalid Configuration"
+  ParseFailure _ (LossyNumberLiteral _) -> "Invalid Arguments"
   EvalFailure _ (UnknownOperator _) -> "Unknown Operator"
-  EvalFailure _ (InvalidOperand _) -> "Invalid Arguments"
-  EvalFailure _ (CustomOperatorFailed _ reason) -> reason
+  EvalFailure _ (InvalidOperand _ _) -> "Invalid Arguments"
+  EvalFailure _ (CustomOperatorFailed _ reason) -> errorMessage reason
+  EvalFailure _ (LossyNumber _) -> "Invalid Arguments"
   EvalFailure _ (LimitExceeded _) -> "Limit Exceeded"
 
 -- | compat-tables' @compareValues@.

@@ -1,0 +1,17 @@
+{
+ "name": "bench",
+ "version": "1.0.0",
+ "description": "",
+ "main": "index.js",
+ "scripts": {
+  "test": "echo \"Error: no test specified\" && exit 1"
+ },
+ "keywords": [],
+ "author": "",
+ "license": "ISC",
+ "dependencies": {
+  "json-logic-engine": "^5.0.7",
+  "json-logic-js": "^2.0.5"
+ },
+ "type": "module"
+}

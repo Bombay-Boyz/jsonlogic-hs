@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_HADDOCK hide #-}
 
 -- |
 -- Module      : JsonLogic.Core.Operator
@@ -117,7 +118,7 @@ builtinName builtin = case builtin of
   BSubstr -> "substr"
   BLog -> "log"
 
--- | 'builtinName' as an 'OperatorName'.
+-- | 'builtinName' as an @OperatorName@.
 builtinOperatorName :: Builtin -> OperatorName
 builtinOperatorName = OperatorName . builtinName
 

@@ -98,10 +98,17 @@ location of the node that failed, as a JSON Pointer into the rule.
 
 ```haskell
 apply (json "{\"if\": [true, {\"nope\": [1]}]}") Null
--- Left (EvalFailure (fromSegments [Key "if",Index 1]) (UnknownOperator (OperatorName "nope")))
+-- Left (ParseFailure (fromSegments [Key "if",Index 1]) (UnknownOperatorName (OperatorName "nope") [OperatorName "none"]))
+
+apply (json "{\"missing_sone\": [1, [\"a\"]]}") Null   -- a typo names its nearest operators
+-- Left (ParseFailure (fromSegments []) (UnknownOperatorName (OperatorName "missing_sone") [OperatorName "missing_some"]))
+
+-- every problem in a rule, not only the first:
+map errorLocation (validate defaultConfig noOperators (json "{\"and\": [{\"nope\": []}, {\"mox\": []}]}"))
+-- [fromSegments [Key "and",Index 0],fromSegments [Key "and",Index 1]]
 
 either renderError (const "") (apply (json "{\"if\": [true, {\"nope\": [1]}]}") Null)
--- "at /if/1: unknown operator \"nope\""
+-- "at /if/1: unknown operator \"nope\"; did you mean \"none\"?"
 ```
 
 Match on constructors, not on `renderError`'s text, which may change:
@@ -116,12 +123,16 @@ describe result = case result of
   Left other -> "failed: " ++ show (renderError other)
 ```
 
-Two things are not errors in JsonLogic, because they are not in JavaScript:
-odd operands produce `null`, `false` or `NaN`-turned-`null`, and an unknown
-operator in a branch that is never taken is never looked at:
+Odd operands are not errors in JsonLogic, because they are not in JavaScript:
+they produce `null`, `false` or `NaN`-turned-`null`. An unknown operator is
+refused when the rule is compiled, because a typo is the commonest mistake in
+a rule written by a person. The reference only notices one if it reaches it;
+ask for that with `unknownOperators = FailWhenReached` (lenient arity mode
+does so too):
 
 ```haskell
-apply (json "{\"or\": [true, {\"nope\": []}]}") Null   -- Right (Bool True)
+applyWithConfig defaultConfig{unknownOperators = FailWhenReached} noOperators
+  (json "{\"or\": [true, {\"nope\": []}]}") Null   -- Right (Bool True)
 ```
 
 ## 5. Strict and lenient arity
@@ -170,8 +181,9 @@ the datum in scope and its operands, already evaluated, as JSON:
 import qualified Data.Text as Text
 
 startsWith :: CustomOperator
-startsWith _ [String prefix, String s] = Right (Bool (prefix `Text.isPrefixOf` s))
-startsWith _ _ = Left "starts_with takes two strings"
+startsWith = pureOperator (Exactly 2) $ \_ arguments -> case arguments of
+  [String prefix, String s] -> Right (Bool (prefix `Text.isPrefixOf` s))
+  _ -> Left "starts_with takes two strings"
 
 operators :: Either OperatorsError Operators
 operators = operatorsFromList [(OperatorName "starts_with", startsWith)]
@@ -179,14 +191,35 @@ operators = operatorsFromList [(OperatorName "starts_with", startsWith)]
 -- with Right ops = operators:
 applyWith ops (json "{\"starts_with\": [\"ad\", {\"var\": \"role\"}]}") (json "{\"role\": \"admin\"}")
 -- Right (Bool True)
-applyWith ops (json "{\"starts_with\": [1]}") Null
--- Left (EvalFailure (fromSegments []) (CustomOperatorFailed (OperatorName "starts_with") "starts_with takes two strings"))
+applyWith ops (json "{\"starts_with\": [1, 2]}") Null
+-- Left (EvalFailure (fromSegments []) (CustomOperatorFailed (OperatorName "starts_with") (CustomError {errorCode = "failed", errorMessage = "starts_with takes two strings", errorDetails = Nothing})))
+applyWith ops (json "{\"starts_with\": [1]}") Null   -- the declared arity is checked at compile time
+-- Left (ParseFailure (fromSegments []) (ArityMismatch (OperatorName "starts_with") (Exactly 2) 1))
 ```
 
-A registry refuses a builtin name (`ReservedOperatorName`) and a name given
-twice (`DuplicateOperatorName`) instead of silently picking one. Registries
-combine with `<>`, the left one winning. Operators are resolved when the rule
-is compiled; the full contract is on `CustomOperator`.
+A registry refuses a builtin name (`ReservedOperatorName`), a name given
+twice (`DuplicateOperatorName`) and an empty or padded name
+(`InvalidOperatorName`) instead of silently picking one. Registries combine
+with `combineOperators`, which refuses a name both define. Operators are
+resolved when the rule is compiled; the full contract is on `CustomOperator`.
+
+A *lazy* operator receives its operands unevaluated and decides which to
+evaluate, so it can short-circuit. It runs in `Step`, inside the same step
+budget, and uses `force` and `stepFail`:
+
+```haskell
+coalesce :: CustomOperator
+coalesce = lazyOperator (AtLeast 1) $ \_ operands -> go operands
+  where
+    go [] = pure Null
+    go (operand : rest) = do
+      value <- force operand
+      if value == Null then go rest else pure value
+```
+
+Operators are pure on purpose: one that needs the clock or a database is given
+that information in the data before the rule runs, which keeps evaluation
+deterministic and its limits meaningful.
 
 ## 8. What does this rule read?
 
