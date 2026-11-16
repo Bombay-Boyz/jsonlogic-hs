@@ -4,8 +4,7 @@ A native Haskell implementation of [JsonLogic](https://jsonlogic.com), the
 small rule language that is itself JSON, so rules can be stored, shared
 between systems and evaluated against data without running arbitrary code.
 
-A substantial amount of the code and documentation was written with AI
-assistance.
+A SUBSTANTIAL AMOUNT OF CODE AND DOCUMENTATION HAS BEEN DONE USING AI.
 
 It is held to the JavaScript reference implementation,
 [json-logic-js](https://github.com/jwadhams/json-logic-js) 2.0.5. On our own
