@@ -123,6 +123,12 @@ spec = describe "resource limits" $ do
             \{\"merge\":[{\"var\":\"accumulator\"},{\"var\":\"accumulator\"}]},[1,2]]}"
       r <- within10s (run' defaultConfig rule Null)
       r `shouldBe` Left (EvalProblem (LimitExceeded (ArrayLimit 100000)))
+    it "a reduce that nests its accumulator in itself (shared, never copied)" $ do
+      let rule =
+            "{\"reduce\":[[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40],\
+            \[{\"var\":\"accumulator\"},{\"var\":\"accumulator\"}],0]}"
+      r <- within10s (run' defaultConfig rule Null)
+      r `shouldSatisfy` isStepLimit
     it "a very wide rule" $ do
       -- within the node limit, so it is read and then stopped by the step limit
       let wide = object ["+" .= replicate 900000 (1 :: Int)]

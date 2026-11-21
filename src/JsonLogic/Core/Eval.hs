@@ -180,11 +180,29 @@ runProgram (Program config eval) input = case lossyInput of
   Just n -> Left (root, LossyNumber n)
   Nothing -> case unRun (eval (Env (fromValueWith (numericSafety config) input) input [])) (maxSteps config) of
     Failed location e -> Left (location, e)
-    Done result _ -> Right (toValue result)
+    Done result _
+      | resultTooLarge (maxSteps config) input result ->
+          Left (root, LimitExceeded (StepLimit (maxSteps config)))
+      | otherwise -> Right (toValue result)
   where
     lossyInput
       | numericSafety config == RejectLossy = firstLossyNumber input
       | otherwise = Nothing
+
+-- | Is a result's tree larger than the budget could have built, plus the data
+-- it may simply hold? Arrays are shared, not copied, so a @reduce@ whose body
+-- is @[acc, acc]@ builds a result whose /tree/ doubles on every iteration
+-- while each iteration costs a few steps. Nothing else walks a result, so its
+-- consumer would. Checked once, at the end, in work bounded by the budget plus
+-- the size of the data; only the first, cheap comparison runs unless the
+-- result is large.
+resultTooLarge :: Int -> Aeson.Value -> Val -> Bool
+resultTooLarge budget input result =
+  valWeightUpTo (saturatingSucc budget) result > budget
+    && valWeightUpTo (saturatingSucc allowance) result > allowance
+  where
+    allowance = saturatingAdd budget (valWeightUpTo maxBound (fromValue input))
+    saturatingAdd a b = if a > maxBound - b then maxBound else a + b
 
 -- | One layer of the fold: given each child already compiled, compile this
 -- node. Evaluating a node costs one step, before its own work.

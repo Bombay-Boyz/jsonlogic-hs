@@ -309,5 +309,6 @@ applyBytesWith ::
 applyBytesWith config operators rule input = do
   ruleValue <- first MalformedRule (Aeson.eitherDecode rule)
   inputValue <- first MalformedData (Aeson.eitherDecode input)
+  first Refused (checkData config inputValue)
   result <- first Refused (applyWithConfig config operators ruleValue inputValue)
   pure (Aeson.encode result)

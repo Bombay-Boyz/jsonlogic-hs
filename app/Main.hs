@@ -13,7 +13,7 @@
 -- 1 the rule was refused or failed, 2 bad usage or input that is not JSON.
 module Main (main) where
 
-import Control.Monad (forM_, when)
+import Control.Monad (forM_)
 import qualified Data.Aeson as Aeson
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.ByteString.Lazy.Char8 as Char8
@@ -120,8 +120,7 @@ eval options ruleFile dataFile = do
   rule <- readJson "the rule" ruleFile
   input <- maybe (pure Aeson.Null) (readJson "the data") dataFile
   ready <- either (report options . pure) pure (compile (optConfig options) noOperators rule)
-  when (numericSafety (optConfig options) == RejectLossy) $
-    either (report options . pure) pure (checkData (optConfig options) input)
+  either (report options . pure) pure (checkData (optConfig options) input)
   outcome <- case optTimeout options of
     Just milliseconds -> runWithTimeout (milliseconds * 1000) ready input
     Nothing -> tryRun ready input
