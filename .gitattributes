@@ -1,0 +1,5 @@
+* text=auto eol=lf
+test/outliers.jsonl -text
+test/tests.json -text
+test/community/** -text
+fixtures.sha256 text eol=lf
