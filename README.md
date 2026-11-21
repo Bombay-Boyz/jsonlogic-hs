@@ -19,7 +19,7 @@ Author: Sabrinathan Nair. Licence: MIT LICENSE.
 | Classic shared suite (jsonlogic.com/tests.json) | 278 / 278 |
 | Outlier catalogue, answers recorded from json-logic-js | 26,980 / 26,980 (lenient mode) |
 | Random differential test against json-logic-js | every CI run, fresh seed |
-| Community suite (json-logic/compat-tables) | 782 / 1138 lenient, 839 / 1138 strict |
+| Community suite (json-logic/compat-tables) | 782 / 1138 lenient, 829 / 1138 strict |
 | Haddock coverage | 100% of every module |
 
 The community suite (json-logic/compat-tables) is mostly written for the newer
@@ -59,7 +59,7 @@ run     :: Rule -> Value -> Either Error Value                 -- run many times
 dataUse :: Rule -> DataUse                                     -- what it can read
 
 operatorsFromList :: [(OperatorName, CustomOperator)] -> Either OperatorsError Operators
-type CustomOperator = Value -> [Value] -> Either Text Value
+pureOperator :: Arity -> (Value -> [Value] -> Either CustomError Value) -> CustomOperator
 
 data Error = ParseFailure Location ParseError | EvalFailure Location EvalError
 renderLocation :: Location -> Text                             -- an RFC 6901 JSON Pointer
@@ -121,7 +121,7 @@ fails.
   against exact ones on hundreds of thousands of doubles, and `dataUse`'s
   guarantee.
 - **Hygiene, blocking in CI**: `-Werror` on the primary GHC, a matrix of
-  GHC 9.6 to 9.14 plus macOS and Windows, hlint, fourmolu, shellcheck, actionlint, `cabal check`, a build of the source
+  GHC 9.6 to 9.14 on Linux, hlint, fourmolu, shellcheck, `cabal check`, a build of the source
   distribution on its own, and a downstream project that uses only the public
   module. Dead code is checked with weeder, which is advisory for now.
 
@@ -145,7 +145,7 @@ against behaviour they do not aim for.
 
 | Implementation | Classic suite (278) | Outlier catalogue (26,980) | Community suite (1,138) |
 | --- | --- | --- | --- |
-| **jsonlogic-hs** (measured by this repo's own test runner, see note below) | 278 (100%) | 26,980 (100%, lenient mode) | 782 lenient / 839 strict |
+| **jsonlogic-hs** (measured by this repo's own test runner, see note below) | 278 (100%) | 26,980 (100%, lenient mode) | 782 lenient / 829 strict |
 | json-logic-js 2.0.5 (the reference) | 278 (100%) | 26,980 (100%) | 782 (68.7%) |
 | jsonlogic 0.5.1 (Rust) | 270 (97.1%) | 22,881 (84.8%) | 761 (66.9%) |
 | panzi-json-logic 1.0.1 (Python) | 277 (99.6%) | 21,361 (79.2%) | 790 (69.4%) |
@@ -233,7 +233,6 @@ The repository's `cabal.project` turns on what released builds do not:
 - [`docs/STABILITY.md`](https://github.com/Bombay-Boyz/jsonlogic-hs/blob/main/docs/STABILITY.md): what is covered by the versioning policy.
 - [`docs/AUDIT-2026-10.md`](https://github.com/Bombay-Boyz/jsonlogic-hs/blob/main/docs/AUDIT-2026-10.md): the external audit's findings and how each was resolved.
 - [`docs/adr/`](https://github.com/Bombay-Boyz/jsonlogic-hs/tree/main/docs/adr/): recorded decisions and deviations from the engineering standard.
-- [`VISION.md`](https://github.com/Bombay-Boyz/jsonlogic-hs/blob/main/VISION.md) and [`ENGINEERING_STANDARD.md`](https://github.com/Bombay-Boyz/jsonlogic-hs/blob/main/ENGINEERING_STANDARD.md): the design and the rules this codebase follows.
 
 ## Licence
 

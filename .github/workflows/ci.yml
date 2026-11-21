@@ -17,8 +17,7 @@ concurrency:
 
 # Actions are pinned by commit SHA, not by a movable tag, so a compromised or
 # re-pointed tag cannot change what CI runs. The tag each SHA was resolved
-# from is in the comment; refresh deliberately (Dependabot is configured in
-# .github/dependabot.yml).
+# from is in the comment; refresh deliberately.
 permissions:
   contents: read
 

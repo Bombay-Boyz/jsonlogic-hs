@@ -124,10 +124,10 @@ of json-logic-engine: operators the classic language does not have (`val`,
 value, variadic `/` and `-`, chained `==` and lazily evaluated comparison
 chains. jsonlogic-hs implements the classic language of json-logic-js 2.0.5.
 In lenient mode it scores 782 of 1,138 on the suite, file for file the same
-as json-logic-js; in strict mode 839, because a wrong argument count is then
+as json-logic-js; in strict mode 829, because a wrong argument count is then
 an error, as that dialect also asks. The per-file score is pinned in
 `test/community/expected.json`. Implementing the 2.0 dialect as a selectable
-`Config` setting is on the roadmap (`VISION.md`).
+`Config` setting is on the roadmap.
 
 ## Errors are richer than the reference's
 

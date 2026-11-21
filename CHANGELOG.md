@@ -90,7 +90,7 @@ Each item is pinned by a test in `test/AuditSpec.hs`.
   nightly (`differential/outliers.js`).
 * The community suite of json-logic/compat-tables (1,138 cases), scored as the
   compatibility tables score implementations and pinned per file: 782 in
-  lenient mode, the same as json-logic-js file for file, and 839 in strict
+  lenient mode, the same as json-logic-js file for file, and 829 in strict
   mode. Every one of its rules is also an outlier case.
 * A differential test against the reference with a fresh seed per CI run,
   failing-case shrinking and replay.
@@ -101,8 +101,8 @@ Each item is pinned by a test in `test/AuditSpec.hs`.
 * Every example in `docs/TUTORIAL.md` is checked by a test suite.
 * `scripts/check-harness.sh` feeds every runner missing, empty, truncated and
   tampered fixtures and demands a failure.
-* CI: GHC 9.6 to 9.14 on Linux, plus macOS and Windows; `-Werror` on the
-  primary compiler; hlint, fourmolu, weeder, shellcheck and actionlint;
+* CI: GHC 9.6 to 9.14 on Linux; `-Werror` on the
+  primary compiler; hlint, fourmolu, shellcheck and (advisory) weeder;
   `cabal check`; the source distribution built, tested and documented on its
   own; a downstream project using only `JsonLogic`.
 

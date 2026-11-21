@@ -8,7 +8,7 @@ Community-suite scoring copies compat-tables' own scorers.
 
 | Implementation | Classic suite (278) | Outlier catalogue (26,980) | Community suite (1,138) |
 |---|---|---|---|
-| **jsonlogic-hs** (figures from its README; *not re-run here*) | 278 (100%) | 26,980 (100%, lenient mode) | 782 lenient / 839 strict |
+| **jsonlogic-hs** (figures from its README; *not re-run here*) | 278 (100%) | 26,980 (100%, lenient mode) | 782 lenient / 829 strict |
 | json-logic-js 2.0.5 (the reference) | 278 (100.0%) | 26,980 (100.0%) | 782 (68.7%) |
 | json-logic-engine 5.0.7, interpreted | 278 (100.0%) | 16,475 (61.1%) | 1,119 (98.3%) |
 | json-logic-engine 5.0.7, compiled | 278 (100.0%) | 16,400 (60.8%) | 1,119 (98.3%) |
@@ -29,7 +29,7 @@ How to read it:
   reference's behaviour*, not whether its behaviour is better or worse.
 - **Community suite = the JSON Logic 2.0 dialect.** This is where json-logic-engine and datalogic-rs shine
   (93-98%), and where the reference itself only gets 68.7%. jsonlogic-hs does not implement that dialect
-  (782 lenient / 839 strict).
+  (782 lenient / 829 strict).
 - The two columns pull in opposite directions: implementations that adopt the 2.0 dialect deliberately diverge
   from the reference, so they score low on the outlier catalogue by design, not through bugs.
 
