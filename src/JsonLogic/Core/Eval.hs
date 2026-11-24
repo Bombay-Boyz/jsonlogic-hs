@@ -56,6 +56,7 @@ import JsonLogic.Core.Run (At (..), Result (..), Run (..), exceeded, failAt, spe
 import JsonLogic.Core.Utf16
   ( Units
   , fromUnits
+  , textIsInfixOf
   , toUnits
   , unitsIsInfixOf
   , unitsLength
@@ -555,11 +556,19 @@ flattenOnce other = Vector.singleton other
 contains :: Val -> Val -> Bool
 contains _ (VStr s) | Text.null s = False
 contains needle (VStr s) = case toJsStr needle of
-  Plain text -> Text.isInfixOf text s
+  Plain text -> plainInfix text s
   Wtf units -> unitsIsInfixOf units (toUnits s)
 contains needle (VWtf units) = unitsIsInfixOf (jsStrUnits (toJsStr needle)) units
 contains needle (VArr items) = Vector.any (strictEquals needle) items
 contains _ _ = False
+
+-- | Substring search on well-formed text. The text library's search is the
+-- faster one for a short needle, where its worst case is bounded by the
+-- needle's length; a long needle takes the linear-time search.
+plainInfix :: Text -> Text -> Bool
+plainInfix needle haystack
+  | lengthWord8 needle < 32 = Text.isInfixOf needle haystack
+  | otherwise = textIsInfixOf needle haystack
 
 -- | Which of the keys have no value, or an empty-string one. If the first
 -- argument is itself an array, it is the list of keys.

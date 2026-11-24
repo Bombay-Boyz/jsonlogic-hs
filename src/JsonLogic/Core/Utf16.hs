@@ -39,14 +39,17 @@ module JsonLogic.Core.Utf16
   , unitsSlice
   , unitsAppend
   , unitsIsInfixOf
+  , textIsInfixOf
   , utf16SliceExact
   , utf16CharAtExact
   ) where
 
 import Data.Bits (shiftL, shiftR, (.&.), (.|.))
+import qualified Data.ByteString as ByteString
 import Data.Char (ord)
 import Data.Text (Text)
 import qualified Data.Text as Text
+import qualified Data.Text.Encoding as Encoding
 import qualified Data.Vector.Unboxed as Unboxed
 import Data.Word (Word16)
 
@@ -234,6 +237,42 @@ unitsIsInfixOf (Units needle) (Units haystack)
       | k == m = True
       | i == n = False
       | haystack Unboxed.! i == needle Unboxed.! k = go (i + 1) (k + 1)
+      | k == 0 = go (i + 1) 0
+      | otherwise = go i (failure Unboxed.! (k - 1))
+
+-- | @haystack.indexOf(needle) !== -1@ on well-formed text, in linear time
+-- (Knuth-Morris-Pratt over the UTF-8 bytes). UTF-8 is self-synchronising, so
+-- the bytes of a well-formed needle occur in those of a well-formed haystack
+-- only at character boundaries, and a byte search is a character search.
+-- The text library's own search is fast, but quadratic in the worst case
+-- (a long needle that matches almost everywhere before it fails), which a
+-- hostile rule could use to do far more work than the steps it is charged.
+textIsInfixOf :: Text -> Text -> Bool
+textIsInfixOf needleText haystackText
+  | m == 0 = True
+  | m > n = False
+  | otherwise = go 0 0
+  where
+    needle = Encoding.encodeUtf8 needleText
+    haystack = Encoding.encodeUtf8 haystackText
+    m = ByteString.length needle
+    n = ByteString.length haystack
+    failure :: Unboxed.Vector Int
+    failure = Unboxed.constructN m step
+      where
+        step prefix
+          | i == 0 = 0
+          | otherwise = extend (prefix Unboxed.! (i - 1))
+          where
+            i = Unboxed.length prefix
+            extend k
+              | ByteString.index needle k == ByteString.index needle i = k + 1
+              | k == 0 = 0
+              | otherwise = extend (prefix Unboxed.! (k - 1))
+    go !i !k
+      | k == m = True
+      | i == n = False
+      | ByteString.index haystack i == ByteString.index needle k = go (i + 1) (k + 1)
       | k == 0 = go (i + 1) 0
       | otherwise = go i (failure Unboxed.! (k - 1))
 

@@ -54,6 +54,10 @@ Each item is pinned by a test in `test/AuditSpec.hs`.
   surrogate-half and surplus-operand cases; the original code fails 91 of
   12,000 of them, this version none.
 
+* **`in` on long strings runs in linear time** (it was quadratic in the worst case
+  while charged by length); a result's size is bounded; `applyBytes` and the CLI
+  screen the data's depth.
+
 ### Reading and evaluating rules
 
 * Every builtin operator of the classic JsonLogic specification, with

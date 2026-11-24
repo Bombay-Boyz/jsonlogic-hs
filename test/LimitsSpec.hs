@@ -16,6 +16,7 @@ import Test.QuickCheck
 
 import Gen (genData, genRule)
 import JsonLogic
+import JsonLogic.Core.Utf16 (textIsInfixOf)
 import Support (Problem (..), isRight', json, problem)
 
 run' :: Config -> String -> Value -> Either Problem Value
@@ -29,6 +30,10 @@ within10s result = do
 
 nestedMap :: Int -> Value
 nestedMap levels = foldr (\_ inner -> object ["map" .= [toJSON [1 .. 10 :: Int], inner]]) (object ["var" .= ("" :: String)]) [1 .. levels]
+
+-- | Short strings over a small alphabet, so that matches and near-matches are common.
+smallText :: Gen Data.Text.Text
+smallText = Data.Text.pack <$> listOf (elements "aab\955\128512")
 
 spec :: Spec
 spec = describe "resource limits" $ do
@@ -157,6 +162,18 @@ spec = describe "resource limits" $ do
           rule = object ["+" .= replicate 2000 (object ["==" .= [object ["var" .= ("x" :: String)], toJSON (1 :: Int)]])]
       r <- within10s (problem (applyWithConfig defaultConfig noOperators rule (object ["x" .= big])))
       r `shouldSatisfy` isStepLimit
+
+  describe "string search" $ do
+    it "textIsInfixOf agrees with Data.Text.isInfixOf" $
+      forAll smallText $ \needle -> forAll smallText $ \haystack ->
+        textIsInfixOf needle haystack === Data.Text.isInfixOf needle haystack
+    it "a long needle that almost matches everywhere is searched in linear time" $ do
+      let n = 400000
+          needle = Data.Text.replicate n "a" <> "b" <> Data.Text.replicate n "a"
+          rule = object ["in" .= [String needle, object ["var" .= ("h" :: String)]]]
+          dat = object ["h" .= Data.Text.replicate (4 * n) "a"]
+      r <- within10s (applyWithConfig defaultConfig noOperators rule dat)
+      r `shouldBe` Right (Bool False)
 
   describe "properties" $ do
     it "evaluation always terminates, within a constant factor of the budget" $
