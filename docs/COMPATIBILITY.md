@@ -61,7 +61,8 @@ object as never equal. The reference compares them by reference identity,
 which parsed JSON values do not have. It differs from the reference only
 where the *same* array or object is reached twice, for example
 `{"===": [{"var": ""}, {"var": ""}]}` on `{}`, which is `true` in
-JavaScript. Generated tests avoid such comparisons.
+JavaScript, or a `reduce` whose body compares `accumulator` with itself once it
+holds an array. Generated rules do not compare two reads of the same `var` path.
 
 ### DEV-LONE-SURROGATE: a lone surrogate leaves the rule as U+FFFD
 

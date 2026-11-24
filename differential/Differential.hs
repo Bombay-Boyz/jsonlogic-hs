@@ -48,7 +48,7 @@ import System.Environment (getArgs)
 import System.Exit (exitFailure)
 import System.IO (hSetEncoding, stderr, stdout, utf8)
 import System.Process (callProcess)
-import Test.QuickCheck (Gen, choose, elements, frequency, vectorOf)
+import Test.QuickCheck (Gen, choose, elements, frequency, suchThat, vectorOf)
 import Test.QuickCheck.Gen (unGen)
 import Test.QuickCheck.Random (mkQCGen)
 
@@ -312,10 +312,28 @@ genUnary ctx depth = do
       | shorthand -> object [op .= x]
       | otherwise -> call op [x]
 
+-- | The path of every @var@ inside a rule.
+varPaths :: Value -> [Value]
+varPaths (Array items) = concatMap varPaths (foldr (:) [] items)
+varPaths (Object fields) = concatMap entry (KeyMap.toList fields)
+  where
+    entry ("var", Array args) = take 1 (foldr (:) [] args) ++ concatMap varPaths (foldr (:) [] args)
+    entry ("var", other) = other : varPaths other
+    entry (_, inner) = varPaths inner
+varPaths _ = []
+
+-- | True when no @var@ path is read on both sides of a comparison. The
+-- reference compares arrays and objects by identity, so the same container
+-- reached twice is equal to itself there and never equal here
+-- (docs/COMPATIBILITY.md, DEV-IDENTITY).
+readsNoPathTwice :: [Value] -> Bool
+readsNoPathTwice [a, b] = null [p | p <- varPaths a, p `elem` varPaths b]
+readsNoPathTwice _ = True
+
 genCompare :: Ctx -> Int -> Gen Value
 genCompare ctx depth =
   frequency
-    [ (4, call <$> elements ["==", "===", "!=", "!=="] <*> genArgs ctx depth 2 2)
+    [ (4, call <$> elements ["==", "===", "!=", "!=="] <*> (genArgs ctx depth 2 2 `suchThat` readsNoPathTwice))
     , (3, call <$> elements ["<", "<="] <*> genArgs ctx depth 2 3)
     , (3, call <$> elements [">", ">="] <*> genArgs ctx depth 2 2)
     ]
