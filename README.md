@@ -123,7 +123,7 @@ fails.
 - **Hygiene, blocking in CI**: `-Werror` on the primary GHC, a matrix of
   GHC 9.6 to 9.14 on Linux, hlint, fourmolu, shellcheck, `cabal check`, a build of the source
   distribution on its own, and a downstream project that uses only the public
-  module. Dead code is checked with weeder, which is advisory for now.
+  module. Dead code is checked with weeder.
 
 Implementing JsonLogic in another language? The fixtures are plain JSON and
 JSONL with a documented format; [`docs/CONFORMANCE.md`](https://github.com/Bombay-Boyz/jsonlogic-hs/blob/main/docs/CONFORMANCE.md)

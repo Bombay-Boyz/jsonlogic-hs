@@ -161,6 +161,14 @@ spec = do
     it "still finds an own property of that name" $
       strict "{\"var\":\"constructor\"}" "{\"constructor\":7}" `shouldBe` Right (Number 7)
 
+  describe "arrays and objects are never equal (DEV-IDENTITY)" $ do
+    it "two reads of the same array are not equal, where the reference compares references" $ do
+      strict "{\"===\":[{\"var\":\"l\"},{\"var\":\"l\"}]}" "{\"l\":[1]}" `shouldBe` Right (Bool False)
+      strict "{\"!==\":[{\"var\":\"o\"},{\"var\":\"o\"}]}" "{\"o\":{\"a\":1}}" `shouldBe` Right (Bool True)
+    it "an accumulator holding an array is not equal to itself (the reference says it is)" $
+      lenient "{\"reduce\":[[1],{\"!==\":[{\"var\":\"accumulator\"},{\"var\":\"accumulator\"}]},[0]]}" "null"
+        `shouldBe` Right (Bool True)
+
   describe "undefined" $ do
     it "an object property that is undefined is left out, as JSON.stringify does" $
       lenient "{\"reduce\":[[0],{\"var\":\"\"},{\"and\":[]}]}" "null" `shouldBe` Right (json "{\"current\":0}")

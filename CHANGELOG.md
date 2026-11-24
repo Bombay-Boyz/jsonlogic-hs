@@ -106,7 +106,7 @@ Each item is pinned by a test in `test/AuditSpec.hs`.
 * `scripts/check-harness.sh` feeds every runner missing, empty, truncated and
   tampered fixtures and demands a failure.
 * CI: GHC 9.6 to 9.14 on Linux; `-Werror` on the
-  primary compiler; hlint, fourmolu, shellcheck and (advisory) weeder;
+  primary compiler; hlint, fourmolu, shellcheck and weeder;
   `cabal check`; the source distribution built, tested and documented on its
   own; a downstream project using only `JsonLogic`.
 
