@@ -11,7 +11,7 @@ body:
     attributes:
       label: jsonlogic-hs version and GHC
       description: The package version or commit, and `ghc --version`.
-      placeholder: "0.1.0.0 / GHC 9.14.1"
+      placeholder: "0.2.0.0 / GHC 9.14.1"
     validations:
       required: true
   - type: textarea

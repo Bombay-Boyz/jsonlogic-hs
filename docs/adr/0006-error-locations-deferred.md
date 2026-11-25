@@ -14,8 +14,8 @@ one change, with the version bump the PVP requires.
 `EvalFailure Location EvalError`. The location is the node that failed: the
 operator with the wrong argument count or the unknown name, the value that
 nests too deeply, or the node that ran out of a resource. `renderError`
-starts with the pointer (`at /if/1: ...`). Because 0.1.0.0 is not yet
-released, no version bump was needed.
+starts with the pointer (`at /if/1: ...`). Because this was done before
+0.1.0.0 was released, no version bump was needed.
 
 **How it is checked:** `LocationSpec` asserts, over random rules, data and
 configurations, that every error's location resolves to a value in the rule,

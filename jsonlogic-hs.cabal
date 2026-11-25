@@ -1,6 +1,6 @@
 cabal-version:      3.0
 name:               jsonlogic-hs
-version:            0.1.0.0
+version:            0.2.0.0
 synopsis:           JsonLogic rule engine, checked against the JavaScript reference
 description:
   jsonlogic-hs is a native Haskell implementation of JsonLogic

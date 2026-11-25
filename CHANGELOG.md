@@ -1,62 +1,93 @@
 # Changelog for jsonlogic-hs
 
-## 0.1.0.0 -- 2026-11-24
+## 0.2.0.0 -- 2026-11-24
+
+Everything below is relative to 0.1.0.0 (2026-10-23). This is a major version
+under the PVP: a few things were removed or changed, listed first.
+
+### Upgrading from 0.1.0.0
+
+* **`Config`'s constructor is no longer exported.** Build a configuration with
+  record update on `defaultConfig` (`defaultConfig {maxSteps = 5000}`); the
+  fields are still exported, so new fields will not break your code.
+* **`Operators` is no longer a `Semigroup` or `Monoid`**: the instances
+  combined silently and shadowed a name defined twice. Use `combineOperators`,
+  which refuses a name both registries define.
+* **Unknown operators are refused when a rule is compiled** (strict mode, the
+  default), naming the nearest known operators, even if the rule would never
+  reach them. `unknownOperators = FailWhenReached` (or `Lenient`) keeps the
+  reference's laziness; `unresolvedOperators` lists them. The strict community
+  score moves from 839 to 829: the ten cases are rules whose unknown operator
+  is never reached.
+* **Limits changed.** `maxIterations` (new) bounds the elements any of the six
+  iterating operators visits and is separate from `maxArrayLength`, which now
+  bounds only what is built, so a filter over a large dataset that keeps few
+  elements no longer needs `maxArrayLength` raised. `maxNodes` and
+  `maxDataDepth` are new. A result whose size is more than the step budget
+  could have built, plus the data it may hold, now fails with
+  `LimitExceeded (StepLimit n)`.
+* **`JsonLogic` is the one documented module.** The `JsonLogic.Core` modules
+  are hidden from Haddock and carry no stability promise;
+  `JsonLogic.Core.Rule.Rule` is now `RuleTree`. Import `JsonLogic` only.
+
+### New
+
+* `applyBytes` and `applyBytesWith` (JSON text in and out; the data is screened
+  by `checkData` first), and a `jsonlogic` command (`eval`, `check`, `uses`) to
+  try, check and inspect rules without writing Haskell.
+* `validate` reports every problem in a rule, in document order. `checkData`
+  screens untrusted data (depth, and lossy numbers).
+* `tryRun` and `runWithTimeout` run a rule and return `Either RunFailure
+  Value`. They do not swallow asynchronous exceptions (a `timeout`,
+  `killThread`, a stack or heap overflow), so `timeout n (tryRun r d)` behaves
+  as expected.
+* Specific, machine-readable errors: `InvalidOperand` names the operand, what
+  it needed and what it got; `Error` has a `ToJSON` instance with stable
+  `kind` tags and a `displayException` that reads as a sentence; `CustomError`
+  carries a code, a message and details.
+* `numericSafety`: numbers a double cannot hold (`9007199254740993`) keep their
+  digits when passed through unchanged with `PreserveSource`, or are refused
+  with `RejectLossy`. The default is unchanged (the reference rounds).
+* `validateConfig` and `unlimited` for limits; custom operators can be lazy
+  (`lazyOperator`, `force`, `stepFail`) so a `coalesce` can short-circuit, and
+  remain pure by design.
+
+### Fixed
+
+* **A tiny rule could build an exponentially large result.** Arrays are shared,
+  so a `reduce` whose body wraps its accumulator in a two-element array twice
+  built a result that doubled per element while costing a few steps; anything
+  that then walked it hung. The result is now checked against the budget.
+* **`in` on long strings is linear time.** The text library's search is
+  quadratic in the worst case, and a hostile needle was charged by length only.
+  Long needles now use a linear-time search.
+* **`applyBytes` and the command screen the data's depth** before evaluating.
+* **A severed surrogate pair keeps its identity**: the halves of `"😀"`
+  compare unequal, order by code unit, and `cat` joins them back, as in
+  JavaScript. Before, both became U+FFFD, so they compared equal.
+* **Lenient mode evaluates surplus operands before applying the operator**, as
+  the reference does, so the reference's error is the one reported.
+* `Ord Location` follows position in the rule, not the internal
+  representation; `apply` no longer runs the data-use analysis it does not
+  need; `compile` and `apply` agree on every rule, including refused ones.
+
+### Testing and documentation
+
+* The differential tester runs the reference unpatched and generates
+  surrogate-half and surplus-operand cases; the 0.1.0.0 code fails 91 of
+  12,000 of them, this version none. Its generator no longer compares two
+  reads of the same `var` path, where the reference compares references.
+* Each audit change is pinned by a test (`test/AuditSpec.hs`); the one
+  deviation that can change a result on realistic input, that arrays and
+  objects are never equal (`DEV-IDENTITY`), is now pinned too.
+* Corrections to the documentation: the strict score, the CI description, the
+  README's API summary and links, the list of deviations. The README states
+  that AI was used in writing the code and documentation. CI blocks on weeder,
+  and `.gitattributes` keeps the fixtures byte-exact.
+
+## 0.1.0.0 -- 2026-10-23
 
 First release.
-
-### Changes from a forensic engineering audit
-
-Each item is pinned by a test in `test/AuditSpec.hs`.
-
-* **`tryRun` no longer swallows asynchronous exceptions** (a `timeout`,
-  `killThread`, a stack or heap overflow). It returns `Either RunFailure
-  Value`; `runWithTimeout` is new. Before, `timeout n (tryRun r d)` returned
-  `Just (Left <<timeout>>)` and a killed thread carried on.
-* **Unknown operators are refused when a rule is compiled** (strict mode, the
-  default), naming the nearest known operators. `unknownOperators =
-  FailWhenReached` (or `Lenient`) keeps the reference's laziness;
-  `unresolvedOperators` lists them. The declared `Arity` of a custom operator
-  is checked at compile time in strict mode. This moves the strict community
-  score from 839 to 829: the ten cases are rules whose unknown operator is
-  never reached.
-* **`validate`** reports every problem in a rule in document order;
-  **`checkData`** screens untrusted data (depth, and lossy numbers).
-* **Errors** are specific and machine-readable: `InvalidOperand` names the
-  operand, what it needed and what it got; `Error` has a `ToJSON` instance
-  with stable `kind` tags and a `displayException` that reads as a sentence;
-  `CustomError` carries a code, a message and details.
-* **Numbers a double cannot hold** (`9007199254740993`): `numericSafety =
-  PreserveSource` keeps their digits when passed through unchanged;
-  `RejectLossy` refuses them. The default is unchanged (the reference rounds).
-* **A severed surrogate pair keeps its identity**: the halves of `"😀"` compare
-  unequal, order by code unit, and `cat` joins them back, as in JavaScript.
-  Before, both became U+FFFD, so they compared equal.
-* **One limit model**: `maxIterations` applies to all six iterating operators
-  and is separate from `maxArrayLength` (what is built); limits are validated
-  (`validateConfig`, `unlimited`); `maxNodes`, `maxDataDepth` are new. A
-  filter over a large dataset that keeps few elements no longer needs
-  `maxArrayLength` raised.
-* **Custom operators can be lazy** (`lazyOperator`, `force`, `stepFail`), so a
-  `coalesce` can short-circuit. They remain pure by design.
-* **Lenient mode evaluates surplus operands before applying the operator**,
-  as the reference does, so the reference's error is the one reported.
-* `Ord Location` follows position in the rule, not the internal
-  representation. `apply` no longer runs the data-use analysis it does not
-  need. `compile`/`apply` agree on every rule, including refused ones.
-* `applyBytes` (JSON text in and out), and a `jsonlogic` command
-  (`eval`, `check`, `uses`).
-* **API surface**: `JsonLogic` is the one documented module (the `Core` modules
-  are hidden from Haddock and unsupported); `Config`'s constructor is hidden (use record update on
-  `defaultConfig`); `JsonLogic.Core.Rule.Rule` is now `RuleTree`; the
-  `Semigroup`/`Monoid` instances of `Operators` are gone (they shadowed
-  silently).
-* The differential tester now runs the reference unpatched and generates
-  surrogate-half and surplus-operand cases; the original code fails 91 of
-  12,000 of them, this version none.
-
-* **`in` on long strings runs in linear time** (it was quadratic in the worst case
-  while charged by length); a result's size is bounded; `applyBytes` and the CLI
-  screen the data's depth.
 
 ### Reading and evaluating rules
 
@@ -77,10 +108,9 @@ Each item is pinned by a test in `test/AuditSpec.hs`.
 * Every error carries the `Location` of the node that failed, a JSON Pointer
   (RFC 6901): `ParseFailure Location ParseError` and
   `EvalFailure Location EvalError`; `renderError` starts with it.
-* Custom operators: `operatorsFromList` refuses a builtin name, an empty or
-  padded name, or a name given twice; registries combine with
-  `combineOperators`, which refuses a name both define; and an operator's
-  result is held to the depth and step limits.
+* Custom operators: `operatorsFromList` refuses a builtin name or a name given
+  twice, `Operators` combine with `<>`, and an operator's result is held to
+  the depth and step limits.
 * `dataUse`: which paths of the data a rule can read, found without running
   it, scope-aware (an iteration body reads the element, not the data), with a
   tested guarantee.
@@ -94,7 +124,7 @@ Each item is pinned by a test in `test/AuditSpec.hs`.
   nightly (`differential/outliers.js`).
 * The community suite of json-logic/compat-tables (1,138 cases), scored as the
   compatibility tables score implementations and pinned per file: 782 in
-  lenient mode, the same as json-logic-js file for file, and 829 in strict
+  lenient mode, the same as json-logic-js file for file, and 839 in strict
   mode. Every one of its rules is also an outlier case.
 * A differential test against the reference with a fresh seed per CI run,
   failing-case shrinking and replay.
@@ -106,7 +136,7 @@ Each item is pinned by a test in `test/AuditSpec.hs`.
 * `scripts/check-harness.sh` feeds every runner missing, empty, truncated and
   tampered fixtures and demands a failure.
 * CI: GHC 9.6 to 9.14 on Linux; `-Werror` on the
-  primary compiler; hlint, fourmolu, shellcheck and weeder;
+  primary compiler; hlint, fourmolu, weeder and shellcheck;
   `cabal check`; the source distribution built, tested and documented on its
   own; a downstream project using only `JsonLogic`.
 
